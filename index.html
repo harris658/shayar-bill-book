@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Shayar Tex — Bill Book</title>
+  <meta name="theme-color" content="#14532d">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ST Bills">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app-canvas">
+    <div class="app-shell" id="app-root"></div>
+  </div>
+
+  <!-- Hidden file input for "Restore from file" — lives outside the re-rendered
+       root so it survives every render and keeps its own change listener. -->
+  <input type="file" id="restore-file-input" accept="application/json" hidden>
+
+  <script src="js/app.js"></script>
+  <script>
+    // Register the service worker only over http(s) — opening index.html
+    // directly from disk (file://) must keep working without one.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>

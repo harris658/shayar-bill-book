@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  @keyframes fabPop { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  body { margin: 0; }
+  @media print {
+    body * { visibility: hidden; }
+    #print-sheet, #print-sheet * { visibility: visible; }
+    #print-sheet { position: fixed; inset: 0; }
+    #print-sheet .no-print { display: none !important; }
+    #print-sheet .print-page { page-break-after: always; }
+    #print-sheet .print-page:last-child { page-break-after: auto; }
+  }
+</style>
+</helmet>
+<div style="min-height:100vh; background:#e7e4dd; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px; font-family:-apple-system,'Segoe UI',Roboto,sans-serif;">
+<div style="width:390px; height:844px; background:#f6f5f2; border-radius:36px; overflow:hidden; box-shadow:0 30px 60px rgba(0,0,0,.25); position:relative; display:flex; flex-direction:column; border:1px solid #ddd;">
+
+  <!-- status bar -->
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 22px 4px; font-size:13px; font-weight:600; color:#1c1c1c; flex-shrink:0;">
+    <span>11:41</span>
+    <span style="display:flex; gap:6px; color:#1c1c1c;"><span>5G</span><span>100%</span></span>
+  </div>
+
+  <!-- ===================== HOME SCREEN ===================== -->
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+  <div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+
+    <!-- topbar -->
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 6px;">
+      <div style="width:38px; height:38px; border-radius:50%; background:#14532d; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; flex-shrink:0;">ST</div>
+      <div style="flex:1;">
+        <div style="letter-spacing:.2em; font-weight:700; font-size:15px; color:#1c1c1c;">SHAYAR TEX</div>
+        <div style="color:#777; font-size:12px;">Bill Book</div>
+      </div>
+      <button onClick="{{ openBackup }}" style="border:1px solid #ddd; background:#fff; border-radius:8px; width:36px; height:36px; cursor:pointer; font-size:15px; color:#1c1c1c;" title="Backup &amp; restore">&#9729;</button>
+      <div style="display:flex; border:1px solid #ddd; border-radius:8px; overflow:hidden; flex-shrink:0;">
+        <button onClick="{{ setVariantA }}" style="{{ variantABtnStyle }}">A</button>
+        <button onClick="{{ setVariantB }}" style="{{ variantBBtnStyle }}">B</button>
+      </div>
+    </div>
+
+    <!-- ============ VARIANT A: cards ============ -->
+    <sc-if value="{{ isVariantA }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:14px 20px 100px; display:grid; gap:16px;">
+
+      <div style="background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:#777;">Cash Flow</span>
+          <span style="font-size:13px; color:#777;">This Month &#9662;</span>
+        </div>
+        <div style="display:flex; gap:20px; margin-top:14px;">
+          <div style="flex:1;">
+            <div style="font-size:12px; color:#a11d1d; text-transform:uppercase; letter-spacing:.05em;">Payable</div>
+            <div style="font-size:22px; font-weight:700; color:#1c1c1c; font-family:ui-monospace,monospace;">&#8377;{{ summary.payableFmt }}</div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:12px; color:#14532d; text-transform:uppercase; letter-spacing:.05em;">Received</div>
+            <div style="font-size:22px; font-weight:700; color:#1c1c1c; font-family:ui-monospace,monospace;">&#8377;{{ summary.receivedFmt }}</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid #ddd; margin-top:14px; padding-top:10px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:#777; font-size:14px;">Net Balance</span>
+          <span style="font-weight:700; font-family:ui-monospace,monospace; color:{{ summary.netColor }};">&#8377;{{ summary.netFmt }}</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+          <span style="font-weight:700; font-size:16px; color:#1c1c1c;">Recent Bills</span>
+          <span onClick="{{ toggleShowAll }}" style="color:#777; font-size:13px; cursor:pointer;">{{ seeAllLabel }}</span>
+        </div>
+        <div style="display:grid; gap:8px;">
+          <sc-for list="{{ visibleBills }}" as="b" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:140px;">
+                <div style="color:#1c1c1c;">{{ b.party }}</div>
+                <div style="color:#777; font-size:13px;">#{{ b.no }} &middot; {{ b.dateFmt }} &middot; {{ b.category }}</div>
+              </div>
+              <span style="font-weight:600; white-space:nowrap; font-family:ui-monospace,monospace; color:{{ b.amountColor }};">{{ b.signedAmountFmt }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{ showCategoryBreakdown }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <div style="font-weight:700; font-size:16px; color:#1c1c1c; margin-bottom:8px;">Categories</div>
+        <div style="display:grid; gap:10px; background:#fff; border:1px solid #ddd; border-radius:12px; padding:14px;">
+          <sc-for list="{{ categoryBreakdown }}" as="c" hint-placeholder-count="3">
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;">
+                <span style="color:#1c1c1c;">{{ c.name }}</span>
+                <span style="font-family:ui-monospace,monospace; color:#777;">&#8377;{{ c.amountFmt }}</span>
+              </div>
+              <div style="height:6px; border-radius:99px; background:#f0efe9;">
+                <div style="height:100%; border-radius:99px; background:{{ c.color }}; width:{{ c.pct }}%;"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <div onClick="{{ openBackup }}" style="background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px; cursor:pointer;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:700; color:#1c1c1c;">Backup</span>
+          <span style="color:#777; font-size:13px;">Manage &#8250;</span>
+        </div>
+        <div style="color:#777; font-size:13px; margin-top:4px;">Last backup {{ backup.localLast }}</div>
+      </div>
+
+    </div>
+    </sc-if>
+
+    <!-- ============ VARIANT B: ledger/register ============ -->
+    <sc-if value="{{ isVariantB }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:0 0 100px;">
+
+      <div style="display:flex; padding:14px 20px 16px; border-bottom:1px solid #ddd;">
+        <div style="flex:1; text-align:left;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#a11d1d;">Payable</div>
+          <div style="font-size:18px; font-weight:700; font-family:ui-monospace,monospace; color:#1c1c1c;">&#8377;{{ summary.payableFmt }}</div>
+        </div>
+        <div style="width:1px; background:#ddd; margin:0 14px;"></div>
+        <div style="flex:1; text-align:left;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#14532d;">Received</div>
+          <div style="font-size:18px; font-weight:700; font-family:ui-monospace,monospace; color:#1c1c1c;">&#8377;{{ summary.receivedFmt }}</div>
+        </div>
+        <div style="width:1px; background:#ddd; margin:0 14px;"></div>
+        <div style="flex:1; text-align:left;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#777;">Net</div>
+          <div style="font-size:18px; font-weight:700; font-family:ui-monospace,monospace; color:{{ summary.netColor }};">&#8377;{{ summary.netFmt }}</div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:baseline; padding:14px 20px 6px;">
+        <span style="font-weight:700; font-size:15px; color:#1c1c1c;">Ledger</span>
+        <span onClick="{{ toggleShowAll }}" style="color:#777; font-size:13px; cursor:pointer;">{{ seeAllLabel }}</span>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:8px 20px; border-bottom:1px solid #ddd; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#777; background:#f6f5f2;">Paid to</th>
+            <th style="text-align:left; padding:8px 8px; border-bottom:1px solid #ddd; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#777; background:#f6f5f2;">Date</th>
+            <th style="text-align:right; padding:8px 20px; border-bottom:1px solid #ddd; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#777; background:#f6f5f2;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ visibleBills }}" as="b" hint-placeholder-count="3">
+            <tr>
+              <td style="padding:10px 20px; border-bottom:1px solid #ddd; color:#1c1c1c;">{{ b.party }}<div style="color:#777; font-size:12px;">{{ b.category }}</div></td>
+              <td style="padding:10px 8px; border-bottom:1px solid #ddd; color:#777;">{{ b.dateFmt }}</td>
+              <td style="padding:10px 20px; border-bottom:1px solid #ddd; text-align:right; font-family:ui-monospace,monospace; color:{{ b.amountColor }};">{{ b.signedAmountFmt }}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+
+      <sc-if value="{{ showCategoryBreakdown }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; padding:16px 20px 4px;">
+        <sc-for list="{{ categoryBreakdown }}" as="c" hint-placeholder-count="3">
+          <span style="font-size:12px; padding:6px 10px; border-radius:99px; border:1px solid #ddd; color:#1c1c1c;">{{ c.name }} <span style="font-family:ui-monospace,monospace; color:#777;">&#8377;{{ c.amountFmt }}</span></span>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <div onClick="{{ openBackup }}" style="margin:16px 20px 0; background:#fff7e0; border:1px solid #e5c65a; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; flex-wrap:wrap; gap:8px;">
+        <span style="font-size:13px; color:#1c1c1c;">Last backup {{ backup.localLast }}</span>
+        <span style="font-size:13px; color:#14532d; font-weight:600;">Manage &#8250;</span>
+      </div>
+
+    </div>
+    </sc-if>
+
+  </div>
+  </sc-if>
+
+  <!-- ===================== ADD BILL SCREEN ===================== -->
+  <sc-if value="{{ isAdd }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px;">
+      <button onClick="{{ closeAdd }}" style="border:0; background:none; font-size:20px; cursor:pointer; color:#1c1c1c; padding:0;">&#8249;</button>
+      <span style="font-weight:700; font-size:17px; color:#1c1c1c;">Add Bill</span>
+    </div>
+
+    <div style="padding:0 20px 12px; display:flex; gap:4px;">
+      <button onClick="{{ setTypePaid }}" style="{{ typePaidBtnStyle }}">Paid to</button>
+      <button onClick="{{ setTypeReceived }}" style="{{ typeReceivedBtnStyle }}">Received from</button>
+    </div>
+
+    <div style="padding:0 20px 16px; position:relative;">
+      <input type="text" placeholder="{{ partyPlaceholder }}" value="{{ form.party }}" onChange="{{ onPartyChange }}" onFocus="{{ onPartyFocus }}" style="padding:12px; border:1px solid #ddd; border-radius:8px; background:#fff; width:100%; box-sizing:border-box; font:inherit;" />
+      <sc-if value="{{ partyDropdownOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; left:20px; right:20px; top:100%; z-index:20; background:#fff; border:1px solid #ddd; border-radius:8px; max-height:180px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.12);">
+          <sc-for list="{{ partySuggestions }}" as="p" hint-placeholder-count="2">
+            <div onClick="{{ p.select }}" style="padding:12px; cursor:pointer; border-bottom:1px solid #f0efe9;">
+              <div style="color:#1c1c1c;">{{ p.name }}</div>
+              <div style="color:#777; font-size:13px;">{{ p.hint }}</div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ showCreateParty }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ createPartyFromInput }}" style="padding:12px; cursor:pointer; color:#14532d; font-weight:600;">+ Add "{{ form.party }}" as new party</div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="padding:0 20px 16px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <input type="date" value="{{ form.date }}" onChange="{{ onDateChange }}" style="padding:12px; border:1px solid #ddd; border-radius:8px; background:#fff; font:inherit; width:100%; box-sizing:border-box;" />
+      <select value="{{ form.category }}" onChange="{{ onCategoryChange }}" style="padding:12px; border:1px solid #ddd; border-radius:8px; background:#fff; font:inherit; width:100%; box-sizing:border-box;">
+        <option value="Bills &amp; Utilities">Bills &amp; Utilities</option>
+        <option value="Rent">Rent</option>
+        <option value="Salary/Income">Salary/Income</option>
+      </select>
+    </div>
+
+    <div style="padding:0 20px 12px;">
+      <div style="background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px; text-align:right;">
+        <div style="color:#777; font-size:12px; text-transform:uppercase; letter-spacing:.05em; text-align:left;">Amount</div>
+        <div style="font-size:36px; font-weight:700; font-family:ui-monospace,monospace; color:#1c1c1c; overflow-x:auto; white-space:nowrap;">&#8377;{{ calc.display }}</div>
+      </div>
+    </div>
+
+    <div style="padding:0 20px; flex:1; display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(5,44px); gap:8px;">
+      <button onClick="{{ calc.clear }}" style="grid-column:1; grid-row:1; border:1px solid #ddd; border-radius:8px; background:#fff; color:#a11d1d; font-weight:600; font-size:16px; cursor:pointer;">C</button>
+      <button onClick="{{ calc.backspace }}" style="grid-column:2; grid-row:1; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:16px; cursor:pointer;">&#9003;</button>
+      <button onClick="{{ calc.pressDiv }}" style="grid-column:3; grid-row:1; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:18px; cursor:pointer;">&#247;</button>
+      <button onClick="{{ calc.pressMul }}" style="grid-column:4; grid-row:1; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:18px; cursor:pointer;">&#215;</button>
+
+      <button onClick="{{ calc.press7 }}" style="grid-column:1; grid-row:2; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">7</button>
+      <button onClick="{{ calc.press8 }}" style="grid-column:2; grid-row:2; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">8</button>
+      <button onClick="{{ calc.press9 }}" style="grid-column:3; grid-row:2; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">9</button>
+      <button onClick="{{ calc.pressMinus }}" style="grid-column:4; grid-row:2; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:18px; cursor:pointer;">&#8722;</button>
+
+      <button onClick="{{ calc.press4 }}" style="grid-column:1; grid-row:3; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">4</button>
+      <button onClick="{{ calc.press5 }}" style="grid-column:2; grid-row:3; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">5</button>
+      <button onClick="{{ calc.press6 }}" style="grid-column:3; grid-row:3; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">6</button>
+      <button onClick="{{ calc.pressPlus }}" style="grid-column:4; grid-row:3; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:18px; cursor:pointer;">+</button>
+
+      <button onClick="{{ calc.press1 }}" style="grid-column:1; grid-row:4; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">1</button>
+      <button onClick="{{ calc.press2 }}" style="grid-column:2; grid-row:4; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">2</button>
+      <button onClick="{{ calc.press3 }}" style="grid-column:3; grid-row:4; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">3</button>
+      <button onClick="{{ calc.pressEquals }}" style="grid-column:4; grid-row:4 / span 2; border:1px solid #14532d; border-radius:8px; background:#14532d; color:#fff; font-size:18px; font-weight:700; cursor:pointer;">=</button>
+
+      <button onClick="{{ calc.press0 }}" style="grid-column:1 / span 2; grid-row:5; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">0</button>
+      <button onClick="{{ calc.pressDot }}" style="grid-column:3; grid-row:5; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; font-size:17px; cursor:pointer;">.</button>
+    </div>
+
+    <div style="padding:16px 20px 20px;">
+      <button onClick="{{ saveBill }}" disabled="{{ saveDisabled }}" style="{{ saveBtnStyle }}">Save Bill</button>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===================== BACKUP SCREEN ===================== -->
+  <sc-if value="{{ isBackup }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1; overflow-y:auto;">
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px;">
+      <button onClick="{{ closeBackup }}" style="border:0; background:none; font-size:20px; cursor:pointer; color:#1c1c1c; padding:0;">&#8249;</button>
+      <span style="font-weight:700; font-size:17px; color:#1c1c1c;">Backup &amp; Restore</span>
+    </div>
+
+    <div style="padding:6px 20px 16px; display:grid; gap:16px;">
+
+      <div style="background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:700; color:#1c1c1c;">Local Storage</span>
+          <button onClick="{{ toggleAutoBackup }}" style="{{ toggleTrackStyle }}"><span style="{{ toggleThumbStyle }}"></span></button>
+        </div>
+        <div style="color:#777; font-size:13px; margin-top:4px;">Keep a copy of every bill and party in this browser, on this device.</div>
+        <div style="color:#777; font-size:13px; margin-top:10px;">Auto backup: {{ backup.autoLabel }}</div>
+        <div style="color:#777; font-size:13px;">Last backup: {{ backup.localLast }}</div>
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <button onClick="{{ backupNowLocal }}" style="flex:1; padding:12px 18px; border:1px solid #14532d; border-radius:8px; background:#14532d; color:#fff; cursor:pointer; font:inherit;">Backup now</button>
+          <button onClick="{{ restoreLocal }}" style="flex:1; padding:12px 18px; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; cursor:pointer; font:inherit;">Restore</button>
+        </div>
+      </div>
+
+      <div style="background:#fff; border:1px solid #ddd; border-radius:12px; padding:16px;">
+        <div style="font-weight:700; color:#1c1c1c;">Google Drive</div>
+        <div style="color:#777; font-size:13px; margin-top:4px;">Store an encrypted backup in your own Drive account.</div>
+        <div style="font-size:13px; margin-top:10px; color:{{ backup.driveStatusColor }};">{{ backup.driveStatusText }}</div>
+        <sc-if value="{{ backup.driveConnected }}" hint-placeholder-val="{{ false }}">
+          <div style="color:#777; font-size:13px;">Last backup: {{ backup.driveLast }}</div>
+          <div style="display:flex; gap:10px; margin-top:12px;">
+            <button onClick="{{ backupNowDrive }}" style="flex:1; padding:12px 18px; border:1px solid #14532d; border-radius:8px; background:#14532d; color:#fff; cursor:pointer; font:inherit;">Backup now</button>
+            <button onClick="{{ restoreDrive }}" style="flex:1; padding:12px 18px; border:1px solid #ddd; border-radius:8px; background:#fff; color:#1c1c1c; cursor:pointer; font:inherit;">Restore</button>
+          </div>
+          <button onClick="{{ toggleDrive }}" style="margin-top:10px; width:100%; padding:12px 18px; border:1px solid #a11d1d; border-radius:8px; background:#fff; color:#a11d1d; cursor:pointer; font:inherit;">Disconnect</button>
+        </sc-if>
+        <sc-if value="{{ backup.driveNotConnected }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ toggleDrive }}" style="margin-top:12px; width:100%; padding:12px 18px; border:1px solid #14532d; border-radius:8px; background:#14532d; color:#fff; cursor:pointer; font:inherit;">Connect Google Drive</button>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ backup.flashMsg }}" hint-placeholder-val="{{ false }}">
+        <div style="color:#14532d; font-weight:600; font-size:14px;">{{ backup.flashMsg }}</div>
+      </sc-if>
+
+      <div style="color:#777; font-size:13px;">Backups include all bills, parties and categories. Restoring replaces the data currently on this device.</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===================== ALL BILLS SCREEN ===================== -->
+  <sc-if value="{{ isBills }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1; overflow-y:auto;">
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 6px;">
+      <span style="font-weight:700; font-size:17px; color:#1c1c1c; flex:1;">All Bills</span>
+    </div>
+    <div style="padding:0 20px 12px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <select value="{{ billsFilter.party }}" onChange="{{ onFilterPartyChange }}" style="padding:10px; border:1px solid #ddd; border-radius:8px; background:#fff; font:inherit; font-size:13px; width:100%; box-sizing:border-box;">
+        <option value="">All parties</option>
+        <sc-for list="{{ parties }}" as="p" hint-placeholder-count="3">
+          <option value="{{ p.name }}">{{ p.name }}</option>
+        </sc-for>
+      </select>
+      <input type="date" value="{{ billsFilter.date }}" onChange="{{ onFilterDateChange }}" style="padding:10px; border:1px solid #ddd; border-radius:8px; background:#fff; font:inherit; font-size:13px; width:100%; box-sizing:border-box;" />
+    </div>
+    <div style="padding:0 20px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <sc-if value="{{ hasFilters }}" hint-placeholder-val="{{ false }}">
+        <span onClick="{{ clearFilters }}" style="color:#a11d1d; font-size:13px; cursor:pointer;">Clear filters</span>
+      </sc-if>
+      <button onClick="{{ openPrint }}" disabled="{{ printDisabled }}" style="{{ printBtnStyle }}">Print Bill</button>
+    </div>
+    <div style="padding:0 20px 100px; display:grid; gap:8px;">
+      <sc-for list="{{ filteredBills }}" as="b" hint-placeholder-count="4">
+        <div style="display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:140px;">
+            <div style="color:#1c1c1c;">{{ b.party }}</div>
+            <div style="color:#777; font-size:13px;">#{{ b.no }} &middot; {{ b.dateFmt }} &middot; {{ b.category }}</div>
+          </div>
+          <span style="font-weight:600; white-space:nowrap; font-family:ui-monospace,monospace; color:{{ b.amountColor }};">{{ b.signedAmountFmt }}</span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ noFilteredResults }}" hint-placeholder-val="{{ false }}">
+        <div style="color:#777; font-size:14px; padding:20px 0; text-align:center;">No bills match these filters.</div>
+      </sc-if>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===================== PARTIES SCREEN ===================== -->
+  <sc-if value="{{ isParties }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1; overflow-y:auto;">
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 6px;">
+      <span style="font-weight:700; font-size:17px; color:#1c1c1c; flex:1;">Parties</span>
+    </div>
+    <div style="padding:0 20px 12px; display:grid; gap:8px;">
+      <sc-for list="{{ parties }}" as="p" hint-placeholder-count="4">
+        <div style="display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px;">
+          <div style="flex:1;">
+            <div style="color:#1c1c1c;">{{ p.name }}</div>
+            <div style="color:#777; font-size:13px;">{{ p.hint }}</div>
+          </div>
+          <button onClick="{{ p.remove }}" title="Delete party" style="border:1px solid #ddd; background:#fff; color:#a11d1d; border-radius:8px; width:32px; height:32px; cursor:pointer; font-size:15px;">&times;</button>
+        </div>
+      </sc-for>
+    </div>
+    <div style="padding:12px 20px 100px; border-top:1px solid #ddd;">
+      <div style="color:#777; font-size:12px; text-transform:uppercase; letter-spacing:.05em; margin:12px 0 8px;">Add Party</div>
+      <div style="display:flex; gap:8px;">
+        <input type="text" placeholder="Party name" value="{{ newPartyName }}" onChange="{{ onNewPartyChange }}" style="flex:1; padding:12px; border:1px solid #ddd; border-radius:8px; background:#fff; font:inherit; box-sizing:border-box;" />
+        <button onClick="{{ addParty }}" disabled="{{ addPartyDisabled }}" style="{{ addPartyBtnStyle }}">Add</button>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===================== PRINT BILL SCREEN ===================== -->
+  <sc-if value="{{ isPrint }}" hint-placeholder-val="{{ false }}">
+  <div id="print-sheet" style="position:fixed; inset:0; background:#f6f5f2; z-index:1000; overflow-y:auto; padding:20px; font-family:-apple-system,'Segoe UI',Roboto,sans-serif;">
+    <div class="no-print" style="max-width:720px; margin:0 auto 16px; display:flex; align-items:center; gap:12px;">
+      <button onClick="{{ closePrint }}" style="border:0; background:none; font-size:20px; cursor:pointer; color:#1c1c1c; padding:0;">&#8249;</button>
+      <span style="font-weight:700; font-size:17px; color:#1c1c1c; flex:1;">Print Preview</span>
+      <button onClick="{{ doPrint }}" style="padding:10px 18px; border:1px solid #14532d; border-radius:8px; background:#14532d; color:#fff; cursor:pointer; font:inherit;">Print</button>
+    </div>
+
+    <div class="no-print" style="max-width:720px; margin:0 auto 16px; display:flex; gap:4px;">
+      <button onClick="{{ setPrintCombined }}" style="{{ printCombinedBtnStyle }}">All together</button>
+      <button onClick="{{ setPrintPerParty }}" style="{{ printPerPartyBtnStyle }}">Separate bill per party</button>
+    </div>
+
+    <sc-if value="{{ printModeCombined }}" hint-placeholder-val="{{ true }}">
+    <div class="print-page" style="max-width:720px; margin:0 auto; background:#fff; border:1px solid #000; padding:10mm 12mm; font-family:Georgia,serif; color:#000;">
+      <div style="text-align:center; margin-bottom:6mm;">
+        <div style="font-size:22px; letter-spacing:.35em; font-weight:700;">SHAYAR TEX</div>
+        <div style="font-size:12px; letter-spacing:.2em; color:#333; margin-top:2px;">BILL SUMMARY</div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5mm; border-bottom:1px solid #000; padding-bottom:4mm;">
+        <span>Scope: {{ printScopeLabel }}</span>
+        <span>Generated: {{ printGeneratedDate }}</span>
+      </div>
+
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">No</th>
+            <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">Date</th>
+            <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">Party</th>
+            <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">Category</th>
+            <th style="text-align:right; padding:4px 6px; border-bottom:1px solid #000;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ printBills }}" as="b" hint-placeholder-count="4">
+            <tr>
+              <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.no }}</td>
+              <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.dateFmt }}</td>
+              <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.party }}</td>
+              <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.category }}</td>
+              <td style="padding:4px 6px; border-bottom:1px dotted #999; text-align:right;">{{ b.signedAmountFmt }}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+
+      <div style="display:flex; justify-content:flex-end; gap:24px; margin-top:5mm; font-size:14px;">
+        <div>Total Paid: <b>&#8377;{{ printTotals.payableFmt }}</b></div>
+        <div>Total Received: <b>&#8377;{{ printTotals.receivedFmt }}</b></div>
+        <div>Net: <b>&#8377;{{ printTotals.netFmt }}</b></div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; margin-top:14mm; padding-top:4mm; border-top:1px solid #000; font-size:12px;">
+        <span>Manager</span>
+        <span>Accountant</span>
+        <span>Receiver's Signature</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ printModePerParty }}" hint-placeholder-val="{{ false }}">
+      <sc-for list="{{ printGroups }}" as="g" hint-placeholder-count="2">
+        <div class="print-page" style="max-width:720px; margin:0 auto 16px; background:#fff; border:1px solid #000; padding:10mm 12mm; font-family:Georgia,serif; color:#000;">
+          <div style="text-align:center; margin-bottom:6mm;">
+            <div style="font-size:22px; letter-spacing:.35em; font-weight:700;">SHAYAR TEX</div>
+            <div style="font-size:12px; letter-spacing:.2em; color:#333; margin-top:2px;">DEBIT VOUCHER</div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5mm; border-bottom:1px solid #000; padding-bottom:4mm;">
+            <span>Pay to: {{ g.party }}</span>
+            <span>Date: {{ printGeneratedDate }}</span>
+          </div>
+
+          <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">No</th>
+                <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">Date</th>
+                <th style="text-align:left; padding:4px 6px; border-bottom:1px solid #000;">Category</th>
+                <th style="text-align:right; padding:4px 6px; border-bottom:1px solid #000;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ g.bills }}" as="b" hint-placeholder-count="2">
+                <tr>
+                  <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.no }}</td>
+                  <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.dateFmt }}</td>
+                  <td style="padding:4px 6px; border-bottom:1px dotted #999;">{{ b.category }}</td>
+                  <td style="padding:4px 6px; border-bottom:1px dotted #999; text-align:right;">{{ b.signedAmountFmt }}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:5mm; font-size:14px;">
+            <div>Total: <b>&#8377;{{ g.totalFmt }}</b></div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; margin-top:14mm; padding-top:4mm; border-top:1px solid #000; font-size:12px;">
+            <span>Manager</span>
+            <span>Accountant</span>
+            <span>Receiver's Signature</span>
+          </div>
+        </div>
+      </sc-for>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <!-- FAB -->
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+    <button onClick="{{ openAdd }}" style="position:absolute; left:50%; bottom:70px; transform:translateX(-50%); width:56px; height:56px; border-radius:50%; background:#1c1c1c; color:#fff; border:0; font-size:26px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,.25); animation:fabPop .2s ease;">+</button>
+  </sc-if>
+
+  <!-- bottom nav -->
+  <sc-if value="{{ isTabScreen }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex; justify-content:space-around; padding:12px 0 10px; background:#fff; border-top:1px solid #ddd; flex-shrink:0;">
+    <div onClick="{{ goHome }}" style="text-align:center; font-size:12px; cursor:pointer; color:{{ navHomeColor }}; font-weight:{{ navHomeWeight }};">Home<div style="width:16px; height:3px; background:#14532d; border-radius:99px; margin:4px auto 0; opacity:{{ navHomeDot }};"></div></div>
+    <div onClick="{{ goBills }}" style="text-align:center; font-size:12px; cursor:pointer; color:{{ navBillsColor }}; font-weight:{{ navBillsWeight }};">Bills<div style="width:16px; height:3px; background:#14532d; border-radius:99px; margin:4px auto 0; opacity:{{ navBillsDot }};"></div></div>
+    <div onClick="{{ goParties }}" style="text-align:center; font-size:12px; cursor:pointer; color:{{ navPartiesColor }}; font-weight:{{ navPartiesWeight }};">Parties<div style="width:16px; height:3px; background:#14532d; border-radius:99px; margin:4px auto 0; opacity:{{ navPartiesDot }};"></div></div>
+    <div style="text-align:center; font-size:12px; color:#777;">More</div>
+  </div>
+  </sc-if>
+
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 470, &quot;height&quot;: 924}, &quot;defaultHomeVariant&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;A&quot;, &quot;options&quot;: [&quot;A&quot;, &quot;B&quot;], &quot;tsType&quot;: &quot;'A'|'B'&quot;}, &quot;showCategoryBreakdown&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'home', // home | add | backup
+    homeVariant: (this.props.defaultHomeVariant === 'B') ? 'B' : 'A',
+    showAll: false,
+    bills: [
+      { no: 145, party: 'Ram Traders', date: '2026-07-09', category: 'Bills & Utilities', type: 'paid', amount: 3300 },
+      { no: 144, party: 'Priya Handlooms', date: '2026-07-08', category: 'Salary/Income', type: 'received', amount: 12450 },
+      { no: 143, party: 'Shree Fabrics', date: '2026-07-06', category: 'Rent', amount: 21000, type: 'paid' },
+      { no: 142, party: 'Mahavir Textiles', date: '2026-07-02', category: 'Bills & Utilities', type: 'paid', amount: 4750 },
+      { no: 141, party: 'Maruti Yarn Co.', date: '2026-06-28', category: 'Salary/Income', type: 'received', amount: 6750 },
+      { no: 140, party: 'Manoj Dyeing Works', date: '2026-06-21', category: 'Rent', amount: 6310, type: 'paid' }
+    ],
+    nextNo: 146,
+    parties: [
+      { name: 'Mahavir Textiles', hint: 'last bill 02 Jul \u00b7 \u20b94,750' },
+      { name: 'Maruti Yarn Co.', hint: 'last bill 28 Jun \u00b7 \u20b96,750' },
+      { name: 'Manoj Dyeing Works', hint: 'last bill 21 Jun \u00b7 \u20b96,310' },
+      { name: 'Ram Traders', hint: 'last bill 09 Jul \u00b7 \u20b93,300' },
+      { name: 'Shree Fabrics', hint: 'last bill 06 Jul \u00b7 \u20b921,000' },
+      { name: 'Priya Handlooms', hint: 'last bill 08 Jul \u00b7 \u20b912,450' }
+    ],
+    form: { type: 'paid', party: '', date: this.todayStr(), category: 'Bills & Utilities' },
+    partyDropdownOpen: false,
+    billsFilter: { party: '', date: '' },
+    newPartyName: '',
+    printMode: 'combined',
+    calcStr: '',
+    autoBackup: true,
+    localLast: '08 Jul, 11:20',
+    driveConnected: false,
+    driveLast: null,
+    flashMsg: ''
+  };
+
+  todayStr() {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  }
+
+  fmtDate(iso) {
+    const [y, m, d] = iso.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${d} ${months[parseInt(m,10)-1]} ${y.slice(2)}`;
+  }
+
+  fmtAmount(n) {
+    return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  }
+
+  safeEval(str) {
+    if (!str) return NaN;
+    if (!/^[0-9+\-*/.]+$/.test(str)) return NaN;
+    if (/[+\-*/.]$/.test(str)) str = str.slice(0, -1);
+    try {
+      const v = Function('"use strict";return (' + str + ')')();
+      return typeof v === 'number' && isFinite(v) ? v : NaN;
+    } catch (e) { return NaN; }
+  }
+
+  calcAppend(token) {
+    this.setState(s => {
+      let str = s.calcStr;
+      const isOp = ch => ['+','-','*','/'].includes(ch);
+      if (isOp(token)) {
+        if (!str) return {};
+        if (isOp(str.slice(-1))) str = str.slice(0, -1) + token;
+        else str = str + token;
+      } else if (token === '.') {
+        const parts = str.split(/[+\-*/]/);
+        const last = parts[parts.length - 1];
+        if (last.includes('.')) return {};
+        str = str + (str === '' ? '0.' : '.');
+      } else {
+        str = str + token;
+      }
+      return { calcStr: str };
+    });
+  }
+
+  categoryColor(cat) {
+    if (cat === 'Salary/Income') return '#14532d';
+    if (cat === 'Rent') return '#a11d1d';
+    return '#777';
+  }
+
+  renderVals() {
+    const s = this.state;
+    const screen = s.screen;
+
+    const visibleSource = s.bills;
+    const shown = s.showAll ? visibleSource : visibleSource.slice(0, 3);
+    const visibleBills = shown.map(b => ({
+      no: b.no,
+      party: b.party,
+      dateFmt: this.fmtDate(b.date),
+      category: b.category,
+      amountColor: b.type === 'received' ? '#14532d' : '#a11d1d',
+      signedAmountFmt: (b.type === 'received' ? '+ \u20b9' : '\u2212 \u20b9') + this.fmtAmount(b.amount)
+    }));
+
+    const payable = s.bills.filter(b => b.type === 'paid').reduce((a, b) => a + b.amount, 0);
+    const received = s.bills.filter(b => b.type === 'received').reduce((a, b) => a + b.amount, 0);
+    const net = received - payable;
+    const summary = {
+      payableFmt: this.fmtAmount(payable),
+      receivedFmt: this.fmtAmount(received),
+      netFmt: this.fmtAmount(Math.abs(net)),
+      netColor: net < 0 ? '#a11d1d' : '#14532d'
+    };
+    if (net < 0) summary.netFmt = '\u2212' + summary.netFmt;
+
+    const cats = ['Bills & Utilities', 'Rent', 'Salary/Income'];
+    const catTotals = cats.map(c => ({
+      name: c,
+      amount: s.bills.filter(b => b.category === c).reduce((a, b) => a + b.amount, 0)
+    }));
+    const maxCat = Math.max(1, ...catTotals.map(c => c.amount));
+    const categoryBreakdown = catTotals.map(c => ({
+      name: c.name,
+      amountFmt: this.fmtAmount(c.amount),
+      pct: Math.round((c.amount / maxCat) * 100),
+      color: this.categoryColor(c.name)
+    }));
+
+    const calcDisplay = s.calcStr === '' ? '0' : s.calcStr;
+    const evaluated = this.safeEval(s.calcStr);
+    const amountValue = isNaN(evaluated) ? 0 : evaluated;
+
+    const partyQuery = (s.form.party || '').toLowerCase();
+    const partySuggestions = s.parties
+      .filter(p => partyQuery && p.name.toLowerCase().includes(partyQuery) && p.name.toLowerCase() !== partyQuery)
+      .slice(0, 4)
+      .map(p => ({ name: p.name, hint: p.hint, select: () => this.setState({ form: { ...this.state.form, party: p.name }, partyDropdownOpen: false }) }));
+    const exactMatch = s.parties.some(p => p.name.toLowerCase() === partyQuery);
+    const showCreateParty = !!partyQuery && !exactMatch;
+
+    // bills screen filtering
+    const filteredBills = s.bills
+      .filter(b => !s.billsFilter.party || b.party === s.billsFilter.party)
+      .filter(b => !s.billsFilter.date || b.date === s.billsFilter.date)
+      .map(b => ({
+        no: b.no, party: b.party, dateFmt: this.fmtDate(b.date), category: b.category,
+        amountColor: b.type === 'received' ? '#14532d' : '#a11d1d',
+        signedAmountFmt: (b.type === 'received' ? '+ \u20b9' : '\u2212 \u20b9') + this.fmtAmount(b.amount)
+      }));
+
+    const partiesList = s.parties.map(p => ({
+      name: p.name, hint: p.hint,
+      remove: () => this.setState(prev => ({ parties: prev.parties.filter(x => x.name !== p.name) }))
+    }));
+
+    const tabBtn = (active) => `padding:10px 14px; border:1px solid ${active ? '#14532d' : '#ddd'}; background:${active ? '#14532d' : '#fff'}; color:${active ? '#fff' : '#777'}; border-radius:8px; cursor:pointer; font:inherit; font-size:13px; flex:1;`;
+
+    const saveDisabled = !(s.form.party.trim() && amountValue > 0);
+
+    const toggleBtn = (active) => `padding:6px 12px; border:0; background:${active ? '#14532d' : '#fff'}; color:${active ? '#fff' : '#777'}; cursor:pointer; font:inherit; font-size:13px; font-weight:600;`;
+
+    return {
+      isHome: screen === 'home',
+      isAdd: screen === 'add',
+      isBackup: screen === 'backup',
+      isVariantA: s.homeVariant === 'A',
+      isVariantB: s.homeVariant === 'B',
+      isBills: screen === 'bills',
+      isParties: screen === 'parties',
+      isTabScreen: screen === 'home' || screen === 'bills' || screen === 'parties',
+      navHomeColor: screen === 'home' ? '#1c1c1c' : '#777',
+      navHomeWeight: screen === 'home' ? '700' : '400',
+      navHomeDot: screen === 'home' ? '1' : '0',
+      navBillsColor: screen === 'bills' ? '#1c1c1c' : '#777',
+      navBillsWeight: screen === 'bills' ? '700' : '400',
+      navBillsDot: screen === 'bills' ? '1' : '0',
+      navPartiesColor: screen === 'parties' ? '#1c1c1c' : '#777',
+      navPartiesWeight: screen === 'parties' ? '700' : '400',
+      navPartiesDot: screen === 'parties' ? '1' : '0',
+      goHome: () => this.setState({ screen: 'home' }),
+      goBills: () => this.setState({ screen: 'bills' }),
+      goParties: () => this.setState({ screen: 'parties' }),
+
+      billsFilter: s.billsFilter,
+      filteredBills,
+      noFilteredResults: filteredBills.length === 0,
+      hasFilters: !!(s.billsFilter.party || s.billsFilter.date),
+      onFilterPartyChange: (e) => this.setState({ billsFilter: { ...this.state.billsFilter, party: e.target.value } }),
+      onFilterDateChange: (e) => this.setState({ billsFilter: { ...this.state.billsFilter, date: e.target.value } }),
+      clearFilters: () => this.setState({ billsFilter: { party: '', date: '' } }),
+
+      isPrint: screen === 'print',
+      printDisabled: filteredBills.length === 0,
+      printBtnStyle: `padding:10px 16px; border-radius:8px; border:1px solid #14532d; background:${filteredBills.length === 0 ? '#a9c3b0' : '#14532d'}; border-color:${filteredBills.length === 0 ? '#a9c3b0' : '#14532d'}; color:#fff; font:inherit; font-size:13px; cursor:${filteredBills.length === 0 ? 'default' : 'pointer'};`,
+      openPrint: () => { if (filteredBills.length) this.setState({ screen: 'print' }); },
+      closePrint: () => this.setState({ screen: 'bills' }),
+      doPrint: () => window.print(),
+      printBills: filteredBills,
+      printScopeLabel: (s.billsFilter.party && s.billsFilter.date) ? `${s.billsFilter.party} \u00b7 ${this.fmtDate(s.billsFilter.date)}`
+        : s.billsFilter.party ? s.billsFilter.party
+        : s.billsFilter.date ? this.fmtDate(s.billsFilter.date)
+        : 'All parties \u00b7 All dates',
+      printGeneratedDate: this.fmtDate(this.todayStr()),
+      printModeCombined: s.printMode === 'combined',
+      printModePerParty: s.printMode === 'perParty',
+      setPrintCombined: () => this.setState({ printMode: 'combined' }),
+      setPrintPerParty: () => this.setState({ printMode: 'perParty' }),
+      printCombinedBtnStyle: tabBtn(s.printMode === 'combined'),
+      printPerPartyBtnStyle: tabBtn(s.printMode === 'perParty'),
+      printGroups: (() => {
+        const byParty = new Map();
+        filteredBills.forEach(b => {
+          if (!byParty.has(b.party)) byParty.set(b.party, []);
+          byParty.get(b.party).push(b);
+        });
+        return Array.from(byParty.entries()).map(([party, bills]) => {
+          const rawBills = s.bills.filter(rb => bills.some(b => b.no === rb.no));
+          const total = rawBills.reduce((a, rb) => a + (rb.type === 'received' ? rb.amount : -rb.amount), 0);
+          return { party, bills, totalFmt: (total < 0 ? '\u2212' : '') + this.fmtAmount(Math.abs(total)) };
+        });
+      })(),
+      printTotals: (() => {
+        const payableSum = s.bills.filter(b => (!s.billsFilter.party || b.party === s.billsFilter.party) && (!s.billsFilter.date || b.date === s.billsFilter.date) && b.type === 'paid').reduce((a, b) => a + b.amount, 0);
+        const receivedSum = s.bills.filter(b => (!s.billsFilter.party || b.party === s.billsFilter.party) && (!s.billsFilter.date || b.date === s.billsFilter.date) && b.type === 'received').reduce((a, b) => a + b.amount, 0);
+        const netSum = receivedSum - payableSum;
+        return {
+          payableFmt: this.fmtAmount(payableSum),
+          receivedFmt: this.fmtAmount(receivedSum),
+          netFmt: (netSum < 0 ? '\u2212' : '') + this.fmtAmount(Math.abs(netSum))
+        };
+      })(),
+
+      newPartyName: s.newPartyName,
+      onNewPartyChange: (e) => this.setState({ newPartyName: e.target.value }),
+      addPartyDisabled: !s.newPartyName.trim() || s.parties.some(p => p.name.toLowerCase() === s.newPartyName.trim().toLowerCase()),
+      addPartyBtnStyle: `padding:12px 18px; border-radius:8px; border:1px solid #14532d; background:${(!s.newPartyName.trim() || s.parties.some(p => p.name.toLowerCase() === s.newPartyName.trim().toLowerCase())) ? '#a9c3b0' : '#14532d'}; color:#fff; font:inherit; cursor:pointer;`,
+      addParty: () => {
+        const name = this.state.newPartyName.trim();
+        if (!name || this.state.parties.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
+        this.setState(prev => ({ parties: [...prev.parties, { name, hint: 'no bills yet' }], newPartyName: '' }));
+      },
+
+      showCreateParty,
+      createPartyFromInput: () => {
+        const name = this.state.form.party.trim();
+        if (!name) return;
+        this.setState(prev => ({
+          parties: prev.parties.some(p => p.name.toLowerCase() === name.toLowerCase()) ? prev.parties : [...prev.parties, { name, hint: 'no bills yet' }],
+          partyDropdownOpen: false
+        }));
+      },
+      variantABtnStyle: toggleBtn(s.homeVariant === 'A'),
+      variantBBtnStyle: toggleBtn(s.homeVariant === 'B'),
+      setVariantA: () => this.setState({ homeVariant: 'A' }),
+      setVariantB: () => this.setState({ homeVariant: 'B' }),
+      showCategoryBreakdown: this.props.showCategoryBreakdown !== false,
+
+      summary,
+      visibleBills,
+      seeAllLabel: s.showAll ? 'Show less' : 'See all',
+      toggleShowAll: () => this.setState({ showAll: !this.state.showAll }),
+      categoryBreakdown,
+
+      backup: {
+        localLast: s.localLast,
+        autoLabel: s.autoBackup ? 'On' : 'Off',
+        driveConnected: s.driveConnected,
+        driveNotConnected: !s.driveConnected,
+        driveLast: s.driveLast,
+        driveStatusText: s.driveConnected ? 'Connected \u00b7 harshit.jain@gmail.com' : 'Not connected',
+        driveStatusColor: s.driveConnected ? '#14532d' : '#777',
+        flashMsg: s.flashMsg
+      },
+
+      openAdd: () => this.setState({ screen: 'add' }),
+      closeAdd: () => this.setState({ screen: 'home', calcStr: '', form: { type: 'paid', party: '', date: this.todayStr(), category: 'Bills & Utilities' } }),
+      openBackup: () => this.setState({ screen: 'backup', flashMsg: '' }),
+      closeBackup: () => this.setState({ screen: 'home' }),
+
+      parties: partiesList,
+      form: s.form,
+      partyPlaceholder: s.form.type === 'paid' ? 'Party you paid' : 'Party you received from',
+      onPartyChange: (e) => this.setState({ form: { ...this.state.form, party: e.target.value }, partyDropdownOpen: true }),
+      onPartyFocus: () => this.setState({ partyDropdownOpen: !!this.state.form.party }),
+      partyDropdownOpen: s.partyDropdownOpen && partySuggestions.length > 0,
+      partySuggestions,
+      onDateChange: (e) => this.setState({ form: { ...this.state.form, date: e.target.value } }),
+      onCategoryChange: (e) => this.setState({ form: { ...this.state.form, category: e.target.value } }),
+
+      typePaidBtnStyle: tabBtn(s.form.type === 'paid'),
+      typeReceivedBtnStyle: tabBtn(s.form.type === 'received'),
+      setTypePaid: () => this.setState({ form: { ...this.state.form, type: 'paid' } }),
+      setTypeReceived: () => this.setState({ form: { ...this.state.form, type: 'received' } }),
+
+      calc: {
+        display: calcDisplay,
+        clear: () => this.setState({ calcStr: '' }),
+        backspace: () => this.setState({ calcStr: this.state.calcStr.slice(0, -1) }),
+        press0: () => this.calcAppend('0'),
+        press1: () => this.calcAppend('1'),
+        press2: () => this.calcAppend('2'),
+        press3: () => this.calcAppend('3'),
+        press4: () => this.calcAppend('4'),
+        press5: () => this.calcAppend('5'),
+        press6: () => this.calcAppend('6'),
+        press7: () => this.calcAppend('7'),
+        press8: () => this.calcAppend('8'),
+        press9: () => this.calcAppend('9'),
+        pressDot: () => this.calcAppend('.'),
+        pressPlus: () => this.calcAppend('+'),
+        pressMinus: () => this.calcAppend('-'),
+        pressMul: () => this.calcAppend('*'),
+        pressDiv: () => this.calcAppend('/'),
+        pressEquals: () => {
+          const v = this.safeEval(this.state.calcStr);
+          this.setState({ calcStr: isNaN(v) ? '' : String(Math.round(v * 100) / 100) });
+        }
+      },
+
+      saveDisabled,
+      saveBtnStyle: `width:100%; padding:14px; border-radius:8px; border:1px solid #14532d; background:${saveDisabled ? '#a9c3b0' : '#14532d'}; border-color:${saveDisabled ? '#a9c3b0' : '#14532d'}; color:#fff; font:inherit; font-weight:600; font-size:15px; cursor:${saveDisabled ? 'default' : 'pointer'};`,
+      saveBill: () => {
+        if (saveDisabled) return;
+        const f = this.state.form;
+        const newBill = { no: this.state.nextNo, party: f.party.trim(), date: f.date, category: f.category, type: f.type, amount: Math.round(amountValue * 100) / 100 };
+        this.setState(prev => ({
+          bills: [newBill, ...prev.bills],
+          nextNo: prev.nextNo + 1,
+          screen: 'home',
+          calcStr: '',
+          form: { type: 'paid', party: '', date: this.todayStr(), category: 'Bills & Utilities' }
+        }));
+      },
+
+      toggleAutoBackup: () => this.setState({ autoBackup: !this.state.autoBackup }),
+      toggleTrackStyle: `width:44px; height:24px; border-radius:99px; border:0; cursor:pointer; padding:2px; background:${s.autoBackup ? '#14532d' : '#ddd'}; display:flex; align-items:center;`,
+      toggleThumbStyle: `display:block; width:20px; height:20px; border-radius:50%; background:#fff; transform:translateX(${s.autoBackup ? '20px' : '0'}); transition:transform .15s ease;`,
+      backupNowLocal: () => this.setState({ localLast: 'just now', flashMsg: 'Backed up to local storage.' }),
+      restoreLocal: () => this.setState({ flashMsg: 'Restored from local storage.' }),
+      toggleDrive: () => this.setState(prev => ({ driveConnected: !prev.driveConnected, driveLast: !prev.driveConnected ? 'never' : null, flashMsg: !prev.driveConnected ? 'Connected to Google Drive.' : 'Disconnected from Google Drive.' })),
+      backupNowDrive: () => this.setState({ driveLast: 'just now', flashMsg: 'Backed up to Google Drive.' }),
+      restoreDrive: () => this.setState({ flashMsg: 'Restored from Google Drive.' })
+    };
+  }
+}
+</script>
+</body>
+</html>
