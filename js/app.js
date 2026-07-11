@@ -189,12 +189,34 @@
     });
   }
 
+  // ---- Browser-history mirroring ----
+  //
+  // Every screen change is reflected into the History API so the system
+  // back button/gesture walks back through screens instead of closing the
+  // app. Tab screens REPLACE the top entry (Android bottom-nav convention:
+  // tabs don't stack), drill-in screens (add, print) PUSH one entry. The
+  // boot entry is marked `base` so the first tab switch still pushes once,
+  // leaving [home, current-tab, drill-in?] as the deepest possible stack.
+  let fromPop = false;
+
+  function syncHistory(prevScreen, nextScreen) {
+    if (fromPop || nextScreen === prevScreen) return;
+    const isDrill = nextScreen === 'add' || nextScreen === 'print';
+    if (isDrill || (history.state && history.state.base)) {
+      history.pushState({ screen: nextScreen }, '');
+    } else {
+      history.replaceState({ screen: nextScreen }, '');
+    }
+  }
+
   function setState(patch) {
     const partial = typeof patch === 'function' ? patch(state) : patch;
     if (!partial) return;
     const dataChanged = ['bills', 'parties'].some((k) => k in partial);
     const settingsChanged = 'autoBackup' in partial;
+    const prevScreen = state.screen;
     Object.assign(state, partial);
+    if ('screen' in partial) syncHistory(prevScreen, partial.screen);
     if (dataChanged) {
       saveJSON(DATA_KEY, { bills: state.bills, parties: state.parties });
       if (state.autoBackup) saveSnapshot();
@@ -413,6 +435,9 @@
       goAdd: () => setState({ screen: 'add' }),
       goParties: () => setState({ screen: 'parties' }),
       goMore: () => setState({ screen: 'more' }),
+      // ‹ on drill-in screens = real history back, so the system back
+      // button and the on-screen button land on the same previous screen.
+      goBack: () => history.back(),
 
       navHome: navItem('home'),
       navBills: navItem('bills'),
@@ -512,7 +537,7 @@
       printGeneratedDate: fmtDate(todayStr()),
       printTotals,
       printGroups,
-      closePrint: () => setState({ screen: 'more' }),
+      closePrint: () => history.back(),
       doPrint: () => window.print(),
 
       hasFlash: !!s.flash,
@@ -625,7 +650,7 @@
 
     return `<div class="screen-flex">
       <div class="header-row">
-        <button class="back-btn" data-action="goHome" aria-label="Back">‹</button>
+        <button class="back-btn" data-action="goBack" aria-label="Back">‹</button>
         <span class="screen-title">New bill</span>
       </div>
 
@@ -1043,6 +1068,15 @@
   }
 
   // ===================== Boot =====================
+
+  history.replaceState({ screen: state.screen, base: true }, '');
+
+  window.addEventListener('popstate', (e) => {
+    const target = (e.state && e.state.screen) || 'home';
+    fromPop = true;
+    setState({ screen: target });
+    fromPop = false;
+  });
 
   render();
 })();

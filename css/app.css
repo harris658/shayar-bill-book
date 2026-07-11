@@ -35,6 +35,18 @@ body {
   font-family: var(--font-sans);
   background: var(--canvas);
   color: var(--ink);
+  /* App-like feel: no long-press text selection (kills Android's
+     "touch to search" popup on labels/buttons), no iOS callout,
+     no tap-highlight flash. Inputs re-enable selection below. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 button, input, select {
