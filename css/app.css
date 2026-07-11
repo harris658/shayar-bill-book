@@ -1,5 +1,5 @@
-/* Shayar Tex — Bill Book
-   Vanilla CSS, no dependencies. Design tokens match the design-canvas spec. */
+/* Shayar Tex — Bill Book (v2.0)
+   Vanilla CSS, no dependencies. Design tokens + classes match design-spec-v2.dc.html. */
 
 :root {
   --ink: #1c1c1c;
@@ -8,11 +8,13 @@
   --bg: #f6f5f2;
   --accent: #14532d;
   --danger: #a11d1d;
-  --warn-bg: #fff7e0;
-  --warn-line: #e5c65a;
   --disabled-green: #a9c3b0;
   --canvas: #e7e4dd;
-  --chip-track: #f0efe9;
+  --divider-soft: #f0efe9;
+
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
 
   --font-sans: -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, monospace;
@@ -39,6 +41,12 @@ button, input, select {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
+}
+
+input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
 }
 
 /* ===================== App shell / layout ===================== */
@@ -86,18 +94,18 @@ button, input, select {
   flex-direction: column;
 }
 
-/* ===================== Topbar ===================== */
+/* ===================== Topbar (home) ===================== */
 
 .topbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px 6px;
+  padding: 18px 20px 10px;
 }
 
 .avatar {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
@@ -128,91 +136,55 @@ button, input, select {
 .icon-btn {
   border: 1px solid var(--line);
   background: #fff;
-  border-radius: 8px;
-  width: 36px;
-  height: 36px;
+  border-radius: var(--radius-sm);
+  width: 44px;
+  height: 44px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--ink);
   flex-shrink: 0;
 }
+
+/* ===================== Headers (other screens) ===================== */
 
 .header-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 18px 20px 12px;
 }
 
 .header-row-tight {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px 6px;
+  padding: 18px 20px 12px;
 }
 
 .back-btn {
   border: 0;
   background: none;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   color: var(--ink);
-  padding: 0;
+  padding: 8px 8px 8px 0;
 }
 
 .screen-title {
   font-weight: 700;
-  font-size: 17px;
+  font-size: 20px;
   color: var(--ink);
   flex: 1;
 }
 
-/* ===================== Segmented toggles ===================== */
-
-.segmented {
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
+.header-row .screen-title {
+  font-size: 17px;
 }
 
-.segmented-full {
-  gap: 4px;
-  border: 0;
-}
-
-.seg-btn {
-  padding: 10px 14px;
-  border: 0;
-  background: #fff;
-  color: var(--muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  flex: 1;
-}
-
-.segmented-full .seg-btn {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-.seg-btn.is-active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-
-.variant-toggle .seg-btn {
-  flex: 0 0 auto;
-  padding: 6px 12px;
-  font-weight: 600;
-}
-
-/* ===================== Cards (Variant A home) ===================== */
+/* ===================== Cashflow card (home) ===================== */
 
 .home-content {
-  padding: 14px 20px 100px;
+  padding: 10px 20px 120px;
   display: grid;
   gap: 16px;
 }
@@ -220,12 +192,8 @@ button, input, select {
 .card {
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.card-clickable {
-  cursor: pointer;
+  border-radius: var(--radius-lg);
+  padding: 18px;
 }
 
 .cashflow-head {
@@ -263,7 +231,7 @@ button, input, select {
 }
 
 .cashflow-value {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--ink);
   font-family: var(--font-mono);
@@ -288,11 +256,21 @@ button, input, select {
   font-family: var(--font-mono);
 }
 
+.text-positive {
+  color: var(--accent);
+}
+
+.text-negative {
+  color: var(--danger);
+}
+
+/* ===================== Bill rows (home + bills screen) ===================== */
+
 .section-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .section-title {
@@ -301,18 +279,26 @@ button, input, select {
   color: var(--ink);
 }
 
-.categories-title {
-  margin-bottom: 8px;
-}
-
-.link-muted {
-  color: var(--muted);
+.link-accent {
+  color: var(--accent);
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   background: none;
   border: 0;
   font: inherit;
-  padding: 0;
+  padding: 6px 0;
+}
+
+.link-danger {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  font: inherit;
+  padding: 4px 0;
 }
 
 .bill-list {
@@ -326,305 +312,130 @@ button, input, select {
   gap: 12px;
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  flex-wrap: wrap;
+  border-radius: var(--radius-sm);
+  padding: 14px;
 }
 
 .bill-info {
   flex: 1;
-  min-width: 140px;
+  min-width: 0;
 }
 
 .bill-party {
   color: var(--ink);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bill-meta {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .bill-amount {
   font-weight: 600;
   white-space: nowrap;
   font-family: var(--font-mono);
+  font-size: 14px;
 }
 
-.bill-delete-btn {
+.icon-delete-btn {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--danger);
-  border-radius: 8px;
-  width: 32px;
-  height: 32px;
+  border-radius: var(--radius-sm);
+  width: 40px;
+  height: 40px;
   cursor: pointer;
   font-size: 15px;
   flex-shrink: 0;
 }
 
-.amount-positive {
-  color: var(--accent);
-}
-
-.amount-negative {
-  color: var(--danger);
-}
-
-.text-positive {
-  color: var(--accent);
-}
-
-.text-negative {
-  color: var(--danger);
-}
-
 .empty-note {
   color: var(--muted);
   font-size: 14px;
-  padding: 16px 0;
+  padding: 20px 0;
   text-align: center;
 }
 
-.categories-card {
-  display: grid;
-  gap: 10px;
+/* ===================== All bills screen ===================== */
+
+.search-row {
+  padding: 0 20px 10px;
+}
+
+.chips-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 12px;
+}
+
+.chip-btn {
+  font-size: 13px;
+  padding: 9px 16px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
   background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px;
-}
-
-.category-row-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.category-amount {
-  font-family: var(--font-mono);
   color: var(--muted);
-}
-
-.category-track {
-  height: 6px;
-  border-radius: 99px;
-  background: var(--chip-track);
-}
-
-.category-fill {
-  height: 100%;
-  border-radius: 99px;
-}
-
-.cat-color-income {
-  background: var(--accent);
-}
-
-.cat-color-rent {
-  background: var(--danger);
-}
-
-.cat-color-other {
-  background: var(--muted);
-}
-
-.backup-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.backup-card-title {
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.backup-manage {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.backup-card-sub {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 4px;
-}
-
-/* ===================== Variant B ledger ===================== */
-
-.summary-strip {
-  display: flex;
-  padding: 14px 20px 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.summary-col {
-  flex: 1;
-  text-align: left;
-}
-
-.summary-divider {
-  width: 1px;
-  background: var(--line);
-  margin: 0 14px;
-}
-
-.summary-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-
-.summary-value {
-  font-size: 18px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  color: var(--ink);
-}
-
-.ledger-content {
-  padding: 0 0 100px;
-}
-
-.ledger-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 14px 20px 6px;
-}
-
-.ledger-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--ink);
-}
-
-.ledger-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.ledger-table th {
-  text-align: left;
-  padding: 8px 20px;
-  border-bottom: 1px solid var(--line);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--muted);
-  background: var(--bg);
-}
-
-.ledger-table th.col-amount {
-  text-align: right;
-}
-
-.ledger-table th.col-date {
-  padding: 8px 8px;
-}
-
-.ledger-table td {
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--line);
-  color: var(--ink);
-}
-
-.ledger-table td.col-date {
-  padding: 10px 8px;
-  color: var(--muted);
-}
-
-.ledger-table td.col-amount {
-  text-align: right;
-  font-family: var(--font-mono);
-}
-
-.ledger-subline {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.ledger-empty {
-  padding: 20px;
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-}
-
-.chip-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 16px 20px 4px;
-}
-
-.chip {
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 99px;
-  border: 1px solid var(--line);
-  color: var(--ink);
-}
-
-.chip-amount {
-  font-family: var(--font-mono);
-  color: var(--muted);
-}
-
-.warn-bar {
-  margin: 16px 20px 0;
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-line);
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   cursor: pointer;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.warn-bar-text {
-  font-size: 13px;
-  color: var(--ink);
-}
-
-.warn-bar-cta {
-  font-size: 13px;
-  color: var(--accent);
   font-weight: 600;
 }
 
-/* ===================== Add Bill screen ===================== */
+.chip-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.bills-list {
+  padding: 0 20px 120px;
+  display: grid;
+  gap: 8px;
+}
+
+/* ===================== Add bill screen ===================== */
 
 .type-toggle {
   padding: 0 20px 12px;
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
-.type-toggle .seg-btn {
+.type-btn {
+  flex: 1;
+  padding: 13px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.type-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .party-field {
-  padding: 0 20px 16px;
+  padding: 0 20px 12px;
   position: relative;
 }
 
 .text-input {
-  padding: 12px;
+  padding: 13px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: #fff;
   width: 100%;
   box-sizing: border-box;
   font: inherit;
+  font-size: 14px;
 }
 
 .autocomplete-dropdown {
@@ -635,39 +446,38 @@ button, input, select {
   z-index: 20;
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   max-height: 180px;
   overflow-y: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
 }
 
 .autocomplete-item {
-  padding: 12px;
+  padding: 12px 14px;
   cursor: pointer;
-  border-bottom: 1px solid var(--chip-track);
-}
-
-.autocomplete-name {
+  border-bottom: 1px solid var(--divider-soft);
   color: var(--ink);
+  font-size: 14px;
 }
 
-.autocomplete-hint {
-  color: var(--muted);
-  font-size: 13px;
+.autocomplete-item:hover {
+  background: var(--bg);
 }
 
-.autocomplete-create {
-  padding: 12px;
-  cursor: pointer;
-  color: var(--accent);
-  font-weight: 600;
+.autocomplete-item:last-child {
+  border-bottom: 0;
 }
 
 .form-row-2col {
-  padding: 0 20px 16px;
+  padding: 0 20px 12px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.form-row-2col .text-input {
+  padding: 12px;
+  font-size: 13px;
 }
 
 .amount-section {
@@ -677,9 +487,14 @@ button, input, select {
 .amount-card {
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px;
-  text-align: right;
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+
+.amount-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .amount-label {
@@ -687,7 +502,6 @@ button, input, select {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .05em;
-  text-align: left;
 }
 
 .amount-value {
@@ -695,6 +509,7 @@ button, input, select {
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--ink);
+  text-align: right;
   overflow-x: auto;
   white-space: nowrap;
 }
@@ -703,60 +518,40 @@ button, input, select {
   padding: 0 20px;
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: 44px;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 52px;
   gap: 8px;
+  align-content: start;
 }
 
 .key-btn {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: var(--ink);
-  font-size: 17px;
+  font-size: 19px;
   cursor: pointer;
   font-family: inherit;
 }
 
-.key-op {
-  font-size: 18px;
-}
-
-.key-clear {
-  color: var(--danger);
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.key-backspace {
-  font-size: 16px;
-}
-
-.key-equals {
-  grid-row: span 2;
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.key-zero {
-  grid-column: span 2;
+.key-btn:active {
+  background: var(--divider-soft);
 }
 
 .save-section {
-  padding: 16px 20px 20px;
+  padding: 16px 20px 24px;
 }
 
 .btn {
   padding: 12px 18px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: #fff;
   color: var(--ink);
   cursor: pointer;
   font: inherit;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .btn-primary {
@@ -773,7 +568,8 @@ button, input, select {
 
 .btn-save {
   width: 100%;
-  padding: 14px;
+  padding: 16px;
+  border-radius: var(--radius-md);
   font-weight: 600;
   font-size: 15px;
 }
@@ -782,21 +578,76 @@ button, input, select {
   flex: 1;
 }
 
-/* ===================== Backup screen ===================== */
+.btn-block {
+  width: 100%;
+  margin-top: 14px;
+}
 
-.backup-content {
-  padding: 6px 20px 16px;
+/* ===================== Parties screen ===================== */
+
+.add-party-row {
+  padding: 0 20px 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.add-party-row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-add-party {
+  padding: 0 20px;
+  height: 46px;
+  flex-shrink: 0;
+}
+
+.parties-list {
+  padding: 0 20px 120px;
+  display: grid;
+  gap: 8px;
+}
+
+.party-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 12px 12px 14px;
+}
+
+.party-info {
+  flex: 1;
+}
+
+.party-name {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.party-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* ===================== More screen ===================== */
+
+.more-content {
+  padding: 0 20px 120px;
   display: grid;
   gap: 16px;
 }
 
-.local-card-head {
+.more-card-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.local-card-title {
+.more-card-title {
   font-weight: 700;
   color: var(--ink);
 }
@@ -804,7 +655,7 @@ button, input, select {
 .explainer {
   color: var(--muted);
   font-size: 13px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .meta-line {
@@ -813,23 +664,19 @@ button, input, select {
   margin-top: 10px;
 }
 
-.meta-line + .meta-line {
-  margin-top: 0;
-}
-
-.backup-actions {
+.more-actions {
   display: flex;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .toggle-switch {
-  width: 44px;
-  height: 24px;
+  width: 48px;
+  height: 28px;
   border-radius: 999px;
   border: 0;
   cursor: pointer;
-  padding: 2px;
+  padding: 3px;
   background: var(--line);
   display: flex;
   align-items: center;
@@ -842,8 +689,8 @@ button, input, select {
 
 .toggle-thumb {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #fff;
   transform: translateX(0);
@@ -854,133 +701,10 @@ button, input, select {
   transform: translateX(20px);
 }
 
-.file-card-title {
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.flash-msg {
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.backup-footnote {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-/* ===================== All Bills screen ===================== */
-
-.filters-row {
-  padding: 0 20px 12px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.filter-input {
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  font: inherit;
-  font-size: 13px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.filters-actions {
-  padding: 0 20px 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.clear-filters {
-  color: var(--danger);
-  font-size: 13px;
-  cursor: pointer;
-  background: none;
-  border: 0;
-  font: inherit;
-  padding: 0;
-}
-
-.filters-actions-spacer {
-  flex: 1;
-}
-
-.bills-list {
-  padding: 0 20px 100px;
-  display: grid;
-  gap: 8px;
-}
-
-/* ===================== Parties screen ===================== */
-
-.parties-list {
-  padding: 0 20px 12px;
-  display: grid;
-  gap: 8px;
-}
-
-.party-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.party-info {
-  flex: 1;
-}
-
-.party-name {
-  color: var(--ink);
-}
-
-.party-hint {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.party-delete-btn {
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--danger);
-  border-radius: 8px;
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  font-size: 15px;
-  flex-shrink: 0;
-}
-
-.add-party-section {
-  padding: 12px 20px 100px;
-  border-top: 1px solid var(--line);
-}
-
-.add-party-label {
+.more-footer {
   color: var(--muted);
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  margin: 12px 0 8px;
-}
-
-.add-party-row {
-  display: flex;
-  gap: 8px;
-}
-
-.add-party-row .text-input {
-  flex: 1;
+  text-align: center;
 }
 
 /* ===================== Print preview ===================== */
@@ -1003,11 +727,15 @@ button, input, select {
   gap: 12px;
 }
 
+.print-topbar .screen-title {
+  font-size: 17px;
+}
+
 .print-mode-toggle {
   max-width: 720px;
   margin: 0 auto 16px;
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
 .print-page {
@@ -1069,6 +797,12 @@ button, input, select {
   border-bottom: 1px dotted #999;
 }
 
+.print-empty {
+  padding: 20px 6px;
+  text-align: center;
+  color: #555;
+}
+
 .print-totals {
   display: flex;
   justify-content: flex-end;
@@ -1115,50 +849,48 @@ button, input, select {
   }
 }
 
-/* ===================== FAB ===================== */
+/* ===================== Bottom nav + FAB ===================== */
 
 @keyframes fabPop {
-  from { transform: translateX(-50%) scale(.9); opacity: 0; }
-  to { transform: translateX(-50%) scale(1); opacity: 1; }
+  from { transform: translate(-50%, -50%) scale(.9); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
-
-.fab {
-  position: absolute;
-  left: 50%;
-  bottom: 70px;
-  transform: translateX(-50%);
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: #fff;
-  border: 0;
-  font-size: 26px;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .25);
-  animation: fabPop .2s ease;
-}
-
-/* ===================== Bottom nav ===================== */
 
 .bottom-nav {
-  display: flex;
-  justify-content: space-around;
-  padding: 12px 0 10px;
+  position: relative;
   background: #fff;
   border-top: 1px solid var(--line);
+  flex-shrink: 0;
+  padding: 8px 8px 12px;
+}
+
+.nav-row {
+  display: flex;
+  align-items: flex-end;
+}
+
+.nav-group {
+  flex: 1;
+  display: flex;
+}
+
+.nav-spacer {
+  width: 72px;
   flex-shrink: 0;
 }
 
 .nav-item {
-  text-align: center;
-  font-size: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
   cursor: pointer;
-  color: var(--muted);
-  font-weight: 400;
   background: none;
   border: 0;
-  font-family: inherit;
+  padding: 6px 0;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .nav-item.is-active {
@@ -1166,19 +898,54 @@ button, input, select {
   font-weight: 700;
 }
 
-.nav-item.is-static {
-  cursor: default;
+.nav-label {
+  font-size: 11px;
 }
 
-.nav-dot {
-  width: 16px;
-  height: 3px;
+.nav-fab {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
   background: var(--accent);
-  border-radius: 99px;
-  margin: 4px auto 0;
-  opacity: 0;
+  color: #fff;
+  border: 4px solid #fff;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fabPop .2s ease;
 }
 
-.nav-item.is-active .nav-dot {
-  opacity: 1;
+/* ===================== Toast ===================== */
+
+@keyframes toastUp {
+  from { transform: translate(-50%, 10px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  background: #1c1c1c;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 99px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .25);
+  animation: toastUp .2s ease;
+  white-space: nowrap;
+  max-width: calc(100% - 40px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 50;
 }

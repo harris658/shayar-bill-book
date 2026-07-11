@@ -1,6 +1,8 @@
-/* Shayar Tex — Bill Book
+/* Shayar Tex — Bill Book (v2.0)
    Vanilla JS, no build step, no ES modules (plain <script src>).
-   Ported from design-spec.dc.html's `class Component extends DCLogic`.
+   Ported from design-spec-v2.dc.html's `class Component extends DCLogic`.
+
+   Screens: home | bills | add | parties | more | print
 
    Architecture:
    - `state` is a single mutable object. `setState(patch)` merges a patch
@@ -10,10 +12,17 @@
      — it returns both display strings/classes AND the click/change handlers
      for the *current* render. Handlers are looked up by name at click time
      via a single delegated listener set on the (persistent) root element.
-   - Party-name / new-party-name inputs are the one tricky interaction:
-     a full innerHTML re-render on every keystroke would normally kill focus
-     and caret position. `render()` explicitly saves + restores focus and
-     selection range around the innerHTML swap.
+     A few handlers live inside arrays (chips, type buttons, keypad keys,
+     party matches, party rows) — those are dispatched by index via a small
+     set of special-cased action names, mirroring how `deleteBill` /
+     `removeParty` already worked before this rewrite.
+   - Party / search / note / new-party text inputs are the one tricky
+     interaction: a full innerHTML re-render on every keystroke would
+     normally kill focus and caret position. `render()` explicitly saves +
+     restores focus and selection range around the innerHTML swap, keyed by
+     each input's stable `id`.
+   - A single `flash` string in state drives a toast pill (see `toast()`),
+     auto-clearing after 2200ms.
 */
 
 (function () {
@@ -43,25 +52,27 @@
     }
   }
 
-  // ===================== Formatting helpers (verbatim from spec) =====================
+  // ===================== Formatting helpers =====================
 
   function todayStr() {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   }
 
+  // "d MMM yy" — used for the print sheet, where a year matters.
   function fmtDate(iso) {
-    const [y, m, d] = iso.split('-');
+    const [y, m, d] = String(iso).split('-');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${d} ${months[parseInt(m, 10) - 1]} ${y.slice(2)}`;
+    const mi = parseInt(m, 10) - 1;
+    if (!y || !months[mi]) return String(iso);
+    return `${d} ${months[mi]} ${y.slice(2)}`;
   }
 
-  // "dd MMM" — no year. Used only for the computed party hint (see spec seed
-  // data at line 524: 'last bill 02 Jul · ₹4,750' has no year).
-  function fmtDateNoYear(iso) {
-    const d = new Date(iso + 'T00:00:00');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]}`;
+  // "d MMM" — no year. Used for bill-row meta lines (home / bills screens),
+  // verbatim port of the spec's own `fmtDate(iso)` method.
+  function fmtDateShort(iso) {
+    const dt = new Date(iso + 'T00:00:00');
+    return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   }
 
   function fmtDateTime(isoOrDate) {
@@ -77,6 +88,10 @@
     return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   }
 
+  function money(n) {
+    return '₹' + fmtAmount(n);
+  }
+
   function escapeHTML(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -86,84 +101,72 @@
       .replace(/'/g, '&#39;');
   }
 
-  function categoryColorClass(cat) {
-    if (cat === 'Salary/Income') return 'cat-color-income';
-    if (cat === 'Rent') return 'cat-color-rent';
-    return 'cat-color-other';
+  // ===================== Data model + migration =====================
+  //
+  // v1 bills looked like { no, party, date, category, type, amount }.
+  // v2 bills look like    { id, party, type, amount, date, note }.
+  // v1 parties looked like { name }. v2 parties are plain strings.
+  // Migration is idempotent: running it on already-v2 data is a no-op.
+
+  function migrateBill(b) {
+    if (!b || typeof b !== 'object') return null;
+    const id = (typeof b.id === 'number' && !isNaN(b.id)) ? b.id
+      : (typeof b.no === 'number' && !isNaN(b.no)) ? b.no
+        : Date.now() + Math.floor(Math.random() * 1000);
+    const note = (typeof b.note === 'string' && b.note)
+      ? b.note
+      : (typeof b.category === 'string' ? b.category : '');
+    const amount = typeof b.amount === 'number' && !isNaN(b.amount) ? b.amount : (parseFloat(b.amount) || 0);
+    const date = typeof b.date === 'string' && b.date ? b.date : todayStr();
+    return {
+      id,
+      party: typeof b.party === 'string' ? b.party : '',
+      type: b.type === 'received' ? 'received' : 'paid',
+      amount,
+      date,
+      note
+    };
   }
 
-  // Party hint is computed at render time from the bills list, not stored
-  // on the party record (brief: "COMPUTE dynamically from bills").
-  function computePartyHint(name, bills) {
-    const matches = bills.filter((b) => b.party === name);
-    if (matches.length === 0) return 'no bills yet';
-    const latest = matches.reduce((best, b) => {
-      if (!best) return b;
-      if (b.date !== best.date) return b.date > best.date ? b : best;
-      return b.no > best.no ? b : best;
-    }, null);
-    return `last bill ${fmtDateNoYear(latest.date)} · ₹${fmtAmount(latest.amount)}`;
+  function migrateParty(p) {
+    if (typeof p === 'string') return p;
+    if (p && typeof p === 'object' && typeof p.name === 'string') return p.name;
+    return null;
   }
 
-  // ===================== Calculator (verbatim from spec) =====================
-
-  function safeEval(str) {
-    if (!str) return NaN;
-    if (!/^[0-9+\-*/.]+$/.test(str)) return NaN;
-    if (/[+\-*/.]$/.test(str)) str = str.slice(0, -1);
-    try {
-      const v = Function('"use strict";return (' + str + ')')();
-      return typeof v === 'number' && isFinite(v) ? v : NaN;
-    } catch (e) {
-      return NaN;
-    }
+  function migrateData(data) {
+    if (!data || typeof data !== 'object') return { bills: [], parties: [] };
+    const bills = Array.isArray(data.bills) ? data.bills.map(migrateBill).filter(Boolean) : [];
+    const parties = Array.isArray(data.parties) ? data.parties.map(migrateParty).filter(Boolean) : [];
+    return { bills, parties };
   }
 
-  function calcAppend(token) {
-    setState((s) => {
-      let str = s.calcStr;
-      const isOp = (ch) => ['+', '-', '*', '/'].includes(ch);
-      if (isOp(token)) {
-        if (!str) return {};
-        if (isOp(str.slice(-1))) str = str.slice(0, -1) + token;
-        else str = str + token;
-      } else if (token === '.') {
-        const parts = str.split(/[+\-*/]/);
-        const last = parts[parts.length - 1];
-        if (last.includes('.')) return {};
-        str = str + (str === '' ? '0.' : '.');
-      } else {
-        str = str + token;
-      }
-      return { calcStr: str };
-    });
+  function sortBills(bills) {
+    return bills.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
   }
 
   // ===================== State =====================
 
   const savedData = loadJSON(DATA_KEY, null);
   const savedSettings = loadJSON(SETTINGS_KEY, null);
+  const migrated = migrateData(savedData);
 
   const state = {
-    screen: 'home', // home | add | backup | bills | parties | print
-    homeVariant: (savedSettings && savedSettings.homeVariant === 'B') ? 'B' : 'A',
-    showAll: false,
-    bills: (savedData && Array.isArray(savedData.bills)) ? savedData.bills : [],
-    nextNo: (savedData && typeof savedData.nextNo === 'number') ? savedData.nextNo : 1,
-    parties: (savedData && Array.isArray(savedData.parties)) ? savedData.parties : [],
-    form: { type: 'paid', party: '', date: todayStr(), category: 'Bills & Utilities' },
-    partyDropdownOpen: false,
-    billsFilter: { party: '', date: '' },
-    newPartyName: '',
-    printMode: 'combined',
-    calcStr: '',
+    screen: 'home', // home | bills | add | parties | more | print
+    bills: migrated.bills,
+    parties: migrated.parties,
+    search: '',
+    filter: 'all', // all | received | paid
+    draft: { type: 'received', party: '', date: todayStr(), note: '', amount: '' },
+    newParty: '',
+    printMode: 'combined', // combined | perParty
     autoBackup: (savedSettings && typeof savedSettings.autoBackup === 'boolean') ? savedSettings.autoBackup : true,
-    flashMsg: ''
+    flash: ''
   };
 
   function saveSnapshot() {
     saveJSON(SNAPSHOT_KEY, {
-      data: { bills: state.bills, parties: state.parties, nextNo: state.nextNo },
+      data: { bills: state.bills, parties: state.parties },
       savedAt: new Date().toISOString()
     });
   }
@@ -171,131 +174,152 @@
   function setState(patch) {
     const partial = typeof patch === 'function' ? patch(state) : patch;
     if (!partial) return;
-    const dataChanged = ['bills', 'parties', 'nextNo'].some((k) => k in partial);
-    const settingsChanged = ['homeVariant', 'autoBackup'].some((k) => k in partial);
+    const dataChanged = ['bills', 'parties'].some((k) => k in partial);
+    const settingsChanged = 'autoBackup' in partial;
     Object.assign(state, partial);
     if (dataChanged) {
-      saveJSON(DATA_KEY, { bills: state.bills, parties: state.parties, nextNo: state.nextNo });
+      saveJSON(DATA_KEY, { bills: state.bills, parties: state.parties });
       if (state.autoBackup) saveSnapshot();
     }
     if (settingsChanged) {
-      saveJSON(SETTINGS_KEY, { homeVariant: state.homeVariant, autoBackup: state.autoBackup });
+      saveJSON(SETTINGS_KEY, { autoBackup: state.autoBackup });
     }
     render();
+  }
+
+  // ===================== Toast =====================
+
+  let toastTimer = null;
+  function toast(msg) {
+    clearTimeout(toastTimer);
+    setState({ flash: msg });
+    toastTimer = setTimeout(() => {
+      setState({ flash: '' });
+    }, 2200);
   }
 
   // ===================== computeVals — port of renderVals() =====================
 
   function computeVals(s) {
     const screen = s.screen;
+    const sorted = sortBills(s.bills);
 
-    const shown = s.showAll ? s.bills : s.bills.slice(0, 3);
-    const visibleBills = shown.map((b) => ({
-      no: b.no,
-      party: b.party,
-      dateFmt: fmtDate(b.date),
-      category: b.category,
-      amountClass: b.type === 'received' ? 'amount-positive' : 'amount-negative',
-      signedAmountFmt: (b.type === 'received' ? '+ ₹' : '− ₹') + fmtAmount(b.amount)
-    }));
+    const inSum = sorted.filter((b) => b.type === 'received').reduce((a, b) => a + b.amount, 0);
+    const outSum = sorted.filter((b) => b.type === 'paid').reduce((a, b) => a + b.amount, 0);
+    const net = inSum - outSum;
 
-    const payable = s.bills.filter((b) => b.type === 'paid').reduce((a, b) => a + b.amount, 0);
-    const received = s.bills.filter((b) => b.type === 'received').reduce((a, b) => a + b.amount, 0);
-    const net = received - payable;
-    const summary = {
-      payableFmt: fmtAmount(payable),
-      receivedFmt: fmtAmount(received),
-      netFmt: fmtAmount(Math.abs(net)),
-      netClass: net < 0 ? 'text-negative' : 'text-positive'
+    const billRow = (b) => {
+      const isIn = b.type === 'received';
+      return {
+        id: b.id,
+        party: b.party,
+        meta: fmtDateShort(b.date) + (b.note ? ' · ' + b.note : '') + ' · ' + (isIn ? 'Received' : 'Paid'),
+        amountText: (isIn ? '+' : '−') + money(b.amount),
+        colorClass: isIn ? 'text-positive' : 'text-negative'
+      };
     };
-    if (net < 0) summary.netFmt = '−' + summary.netFmt;
 
-    const cats = ['Bills & Utilities', 'Rent', 'Salary/Income'];
-    const catTotals = cats.map((c) => ({
-      name: c,
-      amount: s.bills.filter((b) => b.category === c).reduce((a, b) => a + b.amount, 0)
+    // ---- home ----
+    const recentBills = sorted.slice(0, 5).map(billRow);
+    const noBills = sorted.length === 0;
+
+    // ---- bills screen ----
+    const q = s.search.trim().toLowerCase();
+    const filtered = sorted.filter((b) =>
+      (s.filter === 'all' || b.type === s.filter) &&
+      (!q || b.party.toLowerCase().includes(q) || (b.note || '').toLowerCase().includes(q))
+    );
+    const chip = (label, value) => ({
+      label,
+      active: s.filter === value,
+      onTap: () => setState({ filter: value })
+    });
+    const chips = [chip('All', 'all'), chip('Received', 'received'), chip('Paid', 'paid')];
+    const filteredBills = filtered.map(billRow);
+
+    // ---- add bill ----
+    const dr = s.draft;
+    const typeBtn = (label, value) => ({
+      label,
+      active: dr.type === value,
+      onTap: () => setState((st) => ({ draft: { ...st.draft, type: value } }))
+    });
+    const typeBtns = [typeBtn('Received', 'received'), typeBtn('Paid', 'paid')];
+
+    const pq = dr.party.trim().toLowerCase();
+    const matchNames = pq && !s.parties.some((p) => p.toLowerCase() === pq)
+      ? s.parties.filter((p) => p.toLowerCase().includes(pq)).slice(0, 4)
+      : [];
+    const partyMatches = matchNames.map((name) => ({
+      name,
+      onPick: () => setState((st) => ({ draft: { ...st.draft, party: name } }))
     }));
-    const maxCat = Math.max(1, ...catTotals.map((c) => c.amount));
-    const categoryBreakdown = catTotals.map((c) => ({
-      name: c.name,
-      amountFmt: fmtAmount(c.amount),
-      pct: Math.round((c.amount / maxCat) * 100),
-      colorClass: categoryColorClass(c.name)
-    }));
 
-    const calcDisplay = s.calcStr === '' ? '0' : s.calcStr;
-    const evaluated = safeEval(s.calcStr);
-    const amountValue = isNaN(evaluated) ? 0 : evaluated;
+    const keyLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
+    const tapKey = (k) => () => setState((st) => {
+      let a = st.draft.amount;
+      if (k === '⌫') a = a.slice(0, -1);
+      else if (k === '.' && a.includes('.')) { /* one dot max — no-op */ }
+      else if (a.length < 10) a += k;
+      return { draft: { ...st.draft, amount: a } };
+    });
+    const keys = keyLabels.map((k) => ({ label: k, onTap: tapKey(k) }));
 
-    const partyQuery = (s.form.party || '').toLowerCase();
-    const partySuggestions = s.parties
-      .filter((p) => partyQuery && p.name.toLowerCase().includes(partyQuery) && p.name.toLowerCase() !== partyQuery)
-      .slice(0, 4)
-      .map((p) => ({
-        name: p.name,
-        hint: computePartyHint(p.name, s.bills),
-        select: () => setState({ form: { ...state.form, party: p.name }, partyDropdownOpen: false })
+    const amountNum = parseFloat(dr.amount) || 0;
+    const canSave = dr.party.trim().length > 0 && amountNum > 0;
+
+    const onSave = () => {
+      if (!canSave) return;
+      const party = dr.party.trim();
+      setState((st) => ({
+        bills: [...st.bills, { id: Date.now(), party, type: dr.type, amount: amountNum, date: dr.date, note: dr.note.trim() }],
+        parties: st.parties.some((p) => p.toLowerCase() === party.toLowerCase()) ? st.parties : [...st.parties, party],
+        draft: { type: 'received', party: '', date: todayStr(), note: '', amount: '' },
+        screen: 'home'
       }));
-    const exactMatch = s.parties.some((p) => p.name.toLowerCase() === partyQuery);
-    const showCreateParty = !!partyQuery && !exactMatch;
-
-    // Deviation from spec: the spec gates the *entire* dropdown (including
-    // the "+ Add as new party" row) on `partySuggestions.length > 0`, which
-    // means typing a brand-new party name with zero fuzzy matches would never
-    // show the create-party prompt at all. Since that prompt is an explicit
-    // requirement here, the dropdown opens when there are suggestions OR a
-    // create-party prompt to show.
-    const partyDropdownOpen = s.partyDropdownOpen && (partySuggestions.length > 0 || showCreateParty);
-
-    const filteredRaw = s.bills
-      .filter((b) => !s.billsFilter.party || b.party === s.billsFilter.party)
-      .filter((b) => !s.billsFilter.date || b.date === s.billsFilter.date);
-    const filteredBills = filteredRaw.map((b) => ({
-      no: b.no,
-      party: b.party,
-      dateFmt: fmtDate(b.date),
-      category: b.category,
-      amountClass: b.type === 'received' ? 'amount-positive' : 'amount-negative',
-      signedAmountFmt: (b.type === 'received' ? '+ ₹' : '− ₹') + fmtAmount(b.amount)
-    }));
-
-    const partiesList = s.parties.map((p) => ({
-      name: p.name,
-      hint: computePartyHint(p.name, s.bills),
-      remove: () => {
-        if (!confirm(`Delete "${p.name}" from parties? This does not delete their past bills.`)) return;
-        setState({ parties: state.parties.filter((x) => x.name !== p.name) });
-      }
-    }));
-
-    const saveDisabled = !(s.form.party.trim() && amountValue > 0);
-    const addPartyDisabled = !s.newPartyName.trim() ||
-      s.parties.some((p) => p.name.toLowerCase() === s.newPartyName.trim().toLowerCase());
-
-    const snapshot = loadJSON(SNAPSHOT_KEY, null);
-    const backupLocalLastFmt = (snapshot && snapshot.savedAt) ? fmtDateTime(snapshot.savedAt) : 'Never';
-
-    // ---- print ----
-    const printTotalsPayable = filteredRaw.filter((b) => b.type === 'paid').reduce((a, b) => a + b.amount, 0);
-    const printTotalsReceived = filteredRaw.filter((b) => b.type === 'received').reduce((a, b) => a + b.amount, 0);
-    const printTotalsNet = printTotalsReceived - printTotalsPayable;
-    const printTotals = {
-      payableFmt: fmtAmount(printTotalsPayable),
-      receivedFmt: fmtAmount(printTotalsReceived),
-      netFmt: (printTotalsNet < 0 ? '−' : '') + fmtAmount(Math.abs(printTotalsNet))
+      toast('Bill saved ✓');
     };
 
+    // ---- parties ----
+    const partiesList = s.parties.map((name) => {
+      const count = s.bills.filter((b) => b.party === name).length;
+      return {
+        name,
+        hint: count === 0 ? 'No bills yet' : count + (count === 1 ? ' bill' : ' bills'),
+        onDelete: () => {
+          if (!confirm(`Delete "${name}" from parties? This does not delete their past bills.`)) return;
+          setState((st) => ({ parties: st.parties.filter((p) => p !== name) }));
+          toast('Party removed');
+        }
+      };
+    });
+
+    // ---- more ----
+    const snapshot = loadJSON(SNAPSHOT_KEY, null);
+    const lastBackup = !s.autoBackup ? 'Off' : ((snapshot && snapshot.savedAt) ? fmtDateTime(snapshot.savedAt) : 'Never');
+
+    // ---- print (scope is always ALL bills — the old party/date filter is gone) ----
+    const printBills = sorted.map((b) => ({
+      dateFmt: fmtDate(b.date),
+      party: b.party,
+      note: b.note || '',
+      signedAmountFmt: (b.type === 'received' ? '+ ₹' : '− ₹') + fmtAmount(b.amount)
+    }));
+    const printTotals = {
+      payableFmt: fmtAmount(outSum),
+      receivedFmt: fmtAmount(inSum),
+      netFmt: (net < 0 ? '−' : '') + fmtAmount(Math.abs(net))
+    };
     const printGroups = (() => {
       const byParty = new Map();
-      filteredRaw.forEach((b) => {
+      sorted.forEach((b) => {
         if (!byParty.has(b.party)) byParty.set(b.party, []);
         byParty.get(b.party).push(b);
       });
       return Array.from(byParty.entries()).map(([party, rawBills]) => {
         const bills = rawBills.map((b) => ({
-          no: b.no,
           dateFmt: fmtDate(b.date),
-          category: b.category,
+          note: b.note || '',
           signedAmountFmt: (b.type === 'received' ? '+ ₹' : '− ₹') + fmtAmount(b.amount)
         }));
         const total = rawBills.reduce((a, b) => a + (b.type === 'received' ? b.amount : -b.amount), 0);
@@ -303,166 +327,91 @@
       });
     })();
 
-    const printScopeLabel = (s.billsFilter.party && s.billsFilter.date)
-      ? `${s.billsFilter.party} · ${fmtDate(s.billsFilter.date)}`
-      : s.billsFilter.party ? s.billsFilter.party
-        : s.billsFilter.date ? fmtDate(s.billsFilter.date)
-          : 'All parties · All dates';
+    const navItem = (key) => ({ active: screen === key });
 
     return {
       screen,
       isHome: screen === 'home',
-      isAdd: screen === 'add',
-      isBackup: screen === 'backup',
       isBills: screen === 'bills',
+      isAdd: screen === 'add',
       isParties: screen === 'parties',
+      isMore: screen === 'more',
       isPrint: screen === 'print',
-      isVariantA: s.homeVariant === 'A',
-      isVariantB: s.homeVariant === 'B',
-      isTabScreen: screen === 'home' || screen === 'bills' || screen === 'parties' || screen === 'backup',
+      showNav: screen !== 'add' && screen !== 'print',
 
-      navHomeActive: screen === 'home',
-      navBillsActive: screen === 'bills',
-      navPartiesActive: screen === 'parties',
-      navMoreActive: screen === 'backup',
       goHome: () => setState({ screen: 'home' }),
       goBills: () => setState({ screen: 'bills' }),
+      goAdd: () => setState({ screen: 'add' }),
       goParties: () => setState({ screen: 'parties' }),
-      goBackup: () => setState({ screen: 'backup', flashMsg: '' }),
+      goMore: () => setState({ screen: 'more' }),
 
-      variantAActive: s.homeVariant === 'A',
-      variantBActive: s.homeVariant === 'B',
-      setVariantA: () => setState({ homeVariant: 'A' }),
-      setVariantB: () => setState({ homeVariant: 'B' }),
-      showCategoryBreakdown: true,
+      navHome: navItem('home'),
+      navBills: navItem('bills'),
+      navParties: navItem('parties'),
+      navMore: navItem('more'),
 
-      summary,
-      hasBills: s.bills.length > 0,
-      visibleBills,
-      seeAllLabel: s.showAll ? 'Show less' : 'See all',
-      toggleShowAll: () => setState({ showAll: !state.showAll }),
-      categoryBreakdown,
+      // ---- home ----
+      periodLabel: new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+      inTotal: money(inSum),
+      outTotal: money(outSum),
+      netTotal: (net >= 0 ? '+' : '−') + money(Math.abs(net)),
+      netClass: net >= 0 ? 'text-positive' : 'text-negative',
+      recentBills,
+      noBills,
 
-      backupLocalLastFmt,
-      openBackup: () => setState({ screen: 'backup', flashMsg: '' }),
+      // ---- bills screen ----
+      search: s.search,
+      onSearch: (e) => setState({ search: e.target.value }),
+      chips,
+      filteredBills,
+      noFiltered: filteredBills.length === 0,
 
-      openAdd: () => setState({ screen: 'add' }),
-      closeAdd: () => setState({
-        screen: 'home',
-        calcStr: '',
-        form: { type: 'paid', party: '', date: todayStr(), category: 'Bills & Utilities' }
-      }),
+      // ---- add bill ----
+      typeBtns,
+      draftParty: dr.party,
+      onPartyInput: (e) => setState((st) => ({ draft: { ...st.draft, party: e.target.value } })),
+      showPartyDrop: partyMatches.length > 0,
+      partyMatches,
+      draftDate: dr.date,
+      onDateChange: (e) => setState((st) => ({ draft: { ...st.draft, date: e.target.value } })),
+      draftNote: dr.note,
+      onNoteChange: (e) => setState((st) => ({ draft: { ...st.draft, note: e.target.value } })),
+      amountDisplay: dr.amount ? '₹' + dr.amount : '₹0',
+      onClearAmount: () => setState((st) => ({ draft: { ...st.draft, amount: '' } })),
+      keys,
+      saveDisabled: !canSave,
+      onSave,
 
-      form: s.form,
-      partyPlaceholder: s.form.type === 'paid' ? 'Party you paid' : 'Party you received from',
-      onPartyChange: (e) => setState({ form: { ...state.form, party: e.target.value }, partyDropdownOpen: true }),
-      onPartyFocus: () => {
-        // Guard against a no-op re-render: setState() always re-renders (no
-        // diffing), and a full re-render recreates this very input node —
-        // pointless churn (and, on some mobile browsers, a visible keyboard
-        // flicker) if the dropdown-open state wouldn't actually change.
-        const shouldOpen = !!state.form.party;
-        if (state.partyDropdownOpen !== shouldOpen) setState({ partyDropdownOpen: shouldOpen });
-      },
-      partyDropdownOpen,
-      partySuggestions,
-      showCreateParty,
-      createPartyFromInput: () => {
-        const name = state.form.party.trim();
+      // ---- parties ----
+      newParty: s.newParty,
+      onNewPartyInput: (e) => setState({ newParty: e.target.value }),
+      onAddParty: () => {
+        const name = s.newParty.trim();
         if (!name) return;
-        const exists = state.parties.some((p) => p.name.toLowerCase() === name.toLowerCase());
-        setState({
-          parties: exists ? state.parties : [...state.parties, { name }],
-          partyDropdownOpen: false
-        });
-      },
-      onDateChange: (e) => setState({ form: { ...state.form, date: e.target.value } }),
-      onCategoryChange: (e) => setState({ form: { ...state.form, category: e.target.value } }),
-
-      typePaidActive: s.form.type === 'paid',
-      typeReceivedActive: s.form.type === 'received',
-      setTypePaid: () => setState({ form: { ...state.form, type: 'paid' } }),
-      setTypeReceived: () => setState({ form: { ...state.form, type: 'received' } }),
-
-      calc: {
-        display: calcDisplay,
-        clear: () => setState({ calcStr: '' }),
-        backspace: () => setState({ calcStr: state.calcStr.slice(0, -1) }),
-        press0: () => calcAppend('0'),
-        press1: () => calcAppend('1'),
-        press2: () => calcAppend('2'),
-        press3: () => calcAppend('3'),
-        press4: () => calcAppend('4'),
-        press5: () => calcAppend('5'),
-        press6: () => calcAppend('6'),
-        press7: () => calcAppend('7'),
-        press8: () => calcAppend('8'),
-        press9: () => calcAppend('9'),
-        pressDot: () => calcAppend('.'),
-        pressPlus: () => calcAppend('+'),
-        pressMinus: () => calcAppend('-'),
-        pressMul: () => calcAppend('*'),
-        pressDiv: () => calcAppend('/'),
-        pressEquals: () => {
-          const v = safeEval(state.calcStr);
-          setState({ calcStr: isNaN(v) ? '' : String(Math.round(v * 100) / 100) });
-        }
-      },
-
-      saveDisabled,
-      saveBill: () => {
-        if (saveDisabled) return;
-        const f = state.form;
-        const partyName = f.party.trim();
-        const newBill = {
-          no: state.nextNo,
-          party: partyName,
-          date: f.date,
-          category: f.category,
-          type: f.type,
-          amount: Math.round(amountValue * 100) / 100
-        };
-        const exists = state.parties.some((p) => p.name.toLowerCase() === partyName.toLowerCase());
-        setState({
-          bills: [newBill, ...state.bills],
-          parties: exists ? state.parties : [...state.parties, { name: partyName }],
-          nextNo: state.nextNo + 1,
-          screen: 'home',
-          calcStr: '',
-          form: { type: 'paid', party: '', date: todayStr(), category: 'Bills & Utilities' }
-        });
-      },
-
-      // ---- backup screen ----
-      autoBackupOn: s.autoBackup,
-      toggleAutoBackup: () => setState({ autoBackup: !state.autoBackup }),
-      flashMsg: s.flashMsg,
-      closeBackup: () => setState({ screen: 'home' }),
-      backupNowLocal: () => {
-        saveSnapshot();
-        setState({ flashMsg: 'Backed up to local storage.' });
-      },
-      restoreLocal: () => {
-        const snap = loadJSON(SNAPSHOT_KEY, null);
-        if (!snap || !snap.data) {
-          setState({ flashMsg: 'No local backup found yet.' });
+        if (s.parties.some((p) => p.toLowerCase() === name.toLowerCase())) {
+          toast('Party already exists');
           return;
         }
-        if (!confirm('Restore from the last local backup? This replaces all bills and parties currently on this device.')) return;
-        setState({
-          bills: Array.isArray(snap.data.bills) ? snap.data.bills : [],
-          parties: Array.isArray(snap.data.parties) ? snap.data.parties : [],
-          nextNo: typeof snap.data.nextNo === 'number' ? snap.data.nextNo : 1,
-          flashMsg: 'Restored from local storage.'
-        });
+        setState((st) => ({ parties: [...st.parties, name], newParty: '' }));
+        toast('Party added ✓');
       },
-      downloadBackup: () => {
-        const payload = {
-          bills: state.bills,
-          parties: state.parties,
-          nextNo: state.nextNo,
-          exportedAt: new Date().toISOString()
-        };
+      partiesList,
+
+      // ---- bill delete (dispatched by numeric id — see click listener) ----
+      deleteBill: (id) => {
+        const bill = state.bills.find((b) => b.id === id);
+        if (!bill) return;
+        if (!confirm(`Delete bill — ${bill.party}, ₹${fmtAmount(bill.amount)}? This cannot be undone.`)) return;
+        setState((st) => ({ bills: st.bills.filter((b) => b.id !== id) }));
+        toast('Bill deleted');
+      },
+
+      // ---- more ----
+      autoBackup: s.autoBackup,
+      onToggleBackup: () => setState((st) => ({ autoBackup: !st.autoBackup })),
+      lastBackup,
+      onExport: () => {
+        const payload = { bills: state.bills, parties: state.parties, exportedAt: new Date().toISOString() };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -472,62 +421,35 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        setState({ flashMsg: 'Backup file downloaded.' });
+        toast('Backup file downloaded.');
       },
-      restoreFromFile: () => {
+      onImport: () => {
         const input = document.getElementById('restore-file-input');
         if (input) input.click();
       },
+      onPrint: () => setState({ screen: 'print' }),
 
-      // ---- all bills screen ----
-      parties: s.parties,
-      billsFilter: s.billsFilter,
-      onFilterPartyChange: (e) => setState({ billsFilter: { ...state.billsFilter, party: e.target.value } }),
-      onFilterDateChange: (e) => setState({ billsFilter: { ...state.billsFilter, date: e.target.value } }),
-      hasFilters: !!(s.billsFilter.party || s.billsFilter.date),
-      clearFilters: () => setState({ billsFilter: { party: '', date: '' } }),
-      filteredBills,
-      noFilteredResults: filteredBills.length === 0,
-      printDisabled: filteredBills.length === 0,
-      openPrint: () => {
-        if (filteredBills.length) setState({ screen: 'print' });
-      },
-      deleteBill: (no) => {
-        const bill = state.bills.find((b) => b.no === no);
-        if (!bill) return;
-        if (!confirm(`Delete bill #${bill.no} — ${bill.party}, ₹${fmtAmount(bill.amount)}? This cannot be undone.`)) return;
-        setState({ bills: state.bills.filter((b) => b.no !== no) });
-      },
-
-      // ---- parties screen ----
-      partiesList,
-      newPartyName: s.newPartyName,
-      onNewPartyChange: (e) => setState({ newPartyName: e.target.value }),
-      addPartyDisabled,
-      addParty: () => {
-        const name = state.newPartyName.trim();
-        if (!name || state.parties.some((p) => p.name.toLowerCase() === name.toLowerCase())) return;
-        setState({ parties: [...state.parties, { name }], newPartyName: '' });
-      },
-
-      // ---- print screen ----
+      // ---- print ----
       printModeCombined: s.printMode === 'combined',
       printModePerParty: s.printMode === 'perParty',
       setPrintCombined: () => setState({ printMode: 'combined' }),
       setPrintPerParty: () => setState({ printMode: 'perParty' }),
-      printBills: filteredBills,
-      printScopeLabel,
+      printBills,
+      printScopeLabel: 'All parties · All dates',
       printGeneratedDate: fmtDate(todayStr()),
       printTotals,
       printGroups,
-      closePrint: () => setState({ screen: 'bills' }),
-      doPrint: () => window.print()
+      closePrint: () => setState({ screen: 'more' }),
+      doPrint: () => window.print(),
+
+      hasFlash: !!s.flash,
+      flash: s.flash
     };
   }
 
   // ===================== HTML builders =====================
 
-  function buildTopbar(v) {
+  function buildTopbarHome() {
     return `
       <div class="topbar">
         <div class="avatar">ST</div>
@@ -535,269 +457,61 @@
           <div class="brand-title">SHAYAR TEX</div>
           <div class="brand-sub">Bill Book</div>
         </div>
-        <button class="icon-btn" data-action="openBackup" title="Backup &amp; restore">&#9729;</button>
-        <div class="segmented variant-toggle">
-          <button class="seg-btn ${v.variantAActive ? 'is-active' : ''}" data-action="setVariantA">A</button>
-          <button class="seg-btn ${v.variantBActive ? 'is-active' : ''}" data-action="setVariantB">B</button>
-        </div>
+        <button class="icon-btn" data-action="goMore" aria-label="Settings" title="Settings">⚙</button>
       </div>`;
   }
 
   function buildBillRow(b, withDelete) {
     const deleteHTML = withDelete
-      ? `<button class="bill-delete-btn" data-action="deleteBill" data-no="${b.no}" title="Delete bill">&times;</button>`
+      ? `<button class="icon-delete-btn" data-action="deleteBill" data-id="${b.id}" aria-label="Delete bill" title="Delete bill">✕</button>`
       : '';
     return `
       <div class="bill-row">
         <div class="bill-info">
           <div class="bill-party">${escapeHTML(b.party)}</div>
-          <div class="bill-meta">#${b.no} · ${b.dateFmt} · ${escapeHTML(b.category)}</div>
+          <div class="bill-meta">${escapeHTML(b.meta)}</div>
         </div>
-        <span class="bill-amount ${b.amountClass}">${b.signedAmountFmt}</span>
+        <span class="bill-amount ${b.colorClass}">${b.amountText}</span>
         ${deleteHTML}
       </div>`;
   }
 
-  function buildHomeVariantA(v) {
-    const billsHTML = v.visibleBills.length
-      ? v.visibleBills.map((b) => buildBillRow(b)).join('')
-      : `<div class="empty-note">No bills yet — tap + to add your first bill.</div>`;
+  function buildHome(v) {
+    const billsHTML = v.recentBills.length
+      ? v.recentBills.map((b) => buildBillRow(b, false)).join('')
+      : `<div class="empty-note">No bills yet — tap + to add your first bill</div>`;
 
-    const categoriesHTML = v.showCategoryBreakdown ? `
-      <div>
-        <div class="section-title categories-title">Categories</div>
-        <div class="categories-card">
-          ${v.categoryBreakdown.map((c) => `
-            <div>
-              <div class="category-row-head">
-                <span>${escapeHTML(c.name)}</span>
-                <span class="category-amount">&#8377;${c.amountFmt}</span>
-              </div>
-              <div class="category-track">
-                <div class="category-fill ${c.colorClass}" style="width:${c.pct}%;"></div>
-              </div>
-            </div>`).join('')}
-        </div>
-      </div>` : '';
-
-    return `
+    return `<div class="screen">
+      ${buildTopbarHome()}
       <div class="home-content">
         <div class="card">
           <div class="cashflow-head">
-            <span class="eyebrow">Cash Flow</span>
-            <span class="cashflow-period">This Month &#9662;</span>
+            <span class="eyebrow">Cashflow</span>
+            <span class="cashflow-period">${escapeHTML(v.periodLabel)}</span>
           </div>
           <div class="cashflow-row">
             <div class="cashflow-col">
-              <div class="cashflow-label text-negative">Payable</div>
-              <div class="cashflow-value">&#8377;${v.summary.payableFmt}</div>
+              <div class="cashflow-label text-positive">Received</div>
+              <div class="cashflow-value">${v.inTotal}</div>
             </div>
             <div class="cashflow-col">
-              <div class="cashflow-label text-positive">Received</div>
-              <div class="cashflow-value">&#8377;${v.summary.receivedFmt}</div>
+              <div class="cashflow-label text-negative">Paid</div>
+              <div class="cashflow-value">${v.outTotal}</div>
             </div>
           </div>
           <div class="net-row">
-            <span class="net-label">Net Balance</span>
-            <span class="net-value ${v.summary.netClass}">&#8377;${v.summary.netFmt}</span>
+            <span class="net-label">Net</span>
+            <span class="net-value ${v.netClass}">${v.netTotal}</span>
           </div>
         </div>
 
         <div>
           <div class="section-head">
-            <span class="section-title">Recent Bills</span>
-            <button class="link-muted" data-action="toggleShowAll">${v.seeAllLabel}</button>
+            <span class="section-title">Recent bills</span>
+            <button class="link-accent" data-action="goBills">View all →</button>
           </div>
           <div class="bill-list">${billsHTML}</div>
         </div>
-
-        ${categoriesHTML}
-
-        <div class="card card-clickable" data-action="openBackup">
-          <div class="backup-card-head">
-            <span class="backup-card-title">Backup</span>
-            <span class="backup-manage">Manage &#8250;</span>
-          </div>
-          <div class="backup-card-sub">Last backup ${v.backupLocalLastFmt}</div>
-        </div>
-      </div>`;
-  }
-
-  function buildHomeVariantB(v) {
-    const rowsHTML = v.visibleBills.length
-      ? v.visibleBills.map((b) => `
-        <tr>
-          <td>${escapeHTML(b.party)}<div class="ledger-subline">${escapeHTML(b.category)}</div></td>
-          <td class="col-date">${b.dateFmt}</td>
-          <td class="col-amount ${b.amountClass}">${b.signedAmountFmt}</td>
-        </tr>`).join('')
-      : `<tr><td colspan="3" class="ledger-empty">No bills yet — tap + to add your first bill.</td></tr>`;
-
-    const chipsHTML = v.showCategoryBreakdown ? `
-      <div class="chip-row">
-        ${v.categoryBreakdown.map((c) => `
-          <span class="chip">${escapeHTML(c.name)} <span class="chip-amount">&#8377;${c.amountFmt}</span></span>`).join('')}
-      </div>` : '';
-
-    return `
-      <div class="ledger-content">
-        <div class="summary-strip">
-          <div class="summary-col">
-            <div class="summary-label text-negative">Payable</div>
-            <div class="summary-value">&#8377;${v.summary.payableFmt}</div>
-          </div>
-          <div class="summary-divider"></div>
-          <div class="summary-col">
-            <div class="summary-label text-positive">Received</div>
-            <div class="summary-value">&#8377;${v.summary.receivedFmt}</div>
-          </div>
-          <div class="summary-divider"></div>
-          <div class="summary-col">
-            <div class="summary-label">Net</div>
-            <div class="summary-value ${v.summary.netClass}">&#8377;${v.summary.netFmt}</div>
-          </div>
-        </div>
-
-        <div class="ledger-head">
-          <span class="ledger-title">Ledger</span>
-          <button class="link-muted" data-action="toggleShowAll">${v.seeAllLabel}</button>
-        </div>
-        <table class="ledger-table">
-          <thead>
-            <tr>
-              <th>Paid to</th>
-              <th class="col-date">Date</th>
-              <th class="col-amount">Amount</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHTML}</tbody>
-        </table>
-
-        ${chipsHTML}
-
-        <div class="warn-bar" data-action="openBackup">
-          <span class="warn-bar-text">Last backup ${v.backupLocalLastFmt}</span>
-          <span class="warn-bar-cta">Manage &#8250;</span>
-        </div>
-      </div>`;
-  }
-
-  function buildHome(v) {
-    return `<div class="screen">
-      ${buildTopbar(v)}
-      ${v.isVariantA ? buildHomeVariantA(v) : buildHomeVariantB(v)}
-    </div>`;
-  }
-
-  function buildAdd(v) {
-    const dropdownHTML = v.partyDropdownOpen ? `
-      <div class="autocomplete-dropdown">
-        ${v.partySuggestions.map((p, i) => `
-          <div class="autocomplete-item" data-action="selectSuggestion" data-index="${i}">
-            <div class="autocomplete-name">${escapeHTML(p.name)}</div>
-            <div class="autocomplete-hint">${escapeHTML(p.hint)}</div>
-          </div>`).join('')}
-        ${v.showCreateParty ? `
-          <div class="autocomplete-create" data-action="createPartyFromInput">+ Add "${escapeHTML(v.form.party)}" as new party</div>` : ''}
-      </div>` : '';
-
-    return `<div class="screen-flex">
-      <div class="header-row">
-        <button class="back-btn" data-action="closeAdd">&#8249;</button>
-        <span class="screen-title">Add Bill</span>
-      </div>
-
-      <div class="type-toggle segmented-full">
-        <button class="seg-btn ${v.typePaidActive ? 'is-active' : ''}" data-action="setTypePaid">Paid to</button>
-        <button class="seg-btn ${v.typeReceivedActive ? 'is-active' : ''}" data-action="setTypeReceived">Received from</button>
-      </div>
-
-      <div class="party-field">
-        <input type="text" id="party-input" class="text-input" placeholder="${escapeHTML(v.partyPlaceholder)}" value="${escapeHTML(v.form.party)}" data-action="onPartyChange" data-focus-action="onPartyFocus" autocomplete="off">
-        ${dropdownHTML}
-      </div>
-
-      <div class="form-row-2col">
-        <input type="date" class="text-input" value="${escapeHTML(v.form.date)}" data-action="onDateChange">
-        <select class="text-input" data-action="onCategoryChange">
-          <option value="Bills &amp; Utilities" ${v.form.category === 'Bills & Utilities' ? 'selected' : ''}>Bills &amp; Utilities</option>
-          <option value="Rent" ${v.form.category === 'Rent' ? 'selected' : ''}>Rent</option>
-          <option value="Salary/Income" ${v.form.category === 'Salary/Income' ? 'selected' : ''}>Salary/Income</option>
-        </select>
-      </div>
-
-      <div class="amount-section">
-        <div class="amount-card">
-          <div class="amount-label">Amount</div>
-          <div class="amount-value">&#8377;${v.calc.display}</div>
-        </div>
-      </div>
-
-      <div class="keypad">
-        <button class="key-btn key-clear" data-action="calc.clear">C</button>
-        <button class="key-btn key-backspace" data-action="calc.backspace">&#9003;</button>
-        <button class="key-btn key-op" data-action="calc.pressDiv">&#247;</button>
-        <button class="key-btn key-op" data-action="calc.pressMul">&#215;</button>
-
-        <button class="key-btn" data-action="calc.press7">7</button>
-        <button class="key-btn" data-action="calc.press8">8</button>
-        <button class="key-btn" data-action="calc.press9">9</button>
-        <button class="key-btn key-op" data-action="calc.pressMinus">&#8722;</button>
-
-        <button class="key-btn" data-action="calc.press4">4</button>
-        <button class="key-btn" data-action="calc.press5">5</button>
-        <button class="key-btn" data-action="calc.press6">6</button>
-        <button class="key-btn key-op" data-action="calc.pressPlus">+</button>
-
-        <button class="key-btn" data-action="calc.press1">1</button>
-        <button class="key-btn" data-action="calc.press2">2</button>
-        <button class="key-btn" data-action="calc.press3">3</button>
-        <button class="key-btn key-equals" data-action="calc.pressEquals">=</button>
-
-        <button class="key-btn key-zero" data-action="calc.press0">0</button>
-        <button class="key-btn" data-action="calc.pressDot">.</button>
-      </div>
-
-      <div class="save-section">
-        <button class="btn btn-primary btn-save" data-action="saveBill" ${v.saveDisabled ? 'disabled' : ''}>Save Bill</button>
-      </div>
-    </div>`;
-  }
-
-  function buildBackup(v) {
-    return `<div class="screen">
-      <div class="header-row">
-        <button class="back-btn" data-action="closeBackup">&#8249;</button>
-        <span class="screen-title">Backup &amp; Restore</span>
-      </div>
-
-      <div class="backup-content">
-        <div class="card">
-          <div class="local-card-head">
-            <span class="local-card-title">Local Storage</span>
-            <button class="toggle-switch ${v.autoBackupOn ? 'is-on' : ''}" data-action="toggleAutoBackup"><span class="toggle-thumb"></span></button>
-          </div>
-          <div class="explainer">Keep a copy of every bill and party in this browser, on this device.</div>
-          <div class="meta-line">Auto backup: ${v.autoBackupOn ? 'On' : 'Off'}</div>
-          <div class="meta-line">Last backup: ${v.backupLocalLastFmt}</div>
-          <div class="backup-actions">
-            <button class="btn btn-primary btn-flex" data-action="backupNowLocal">Backup now</button>
-            <button class="btn btn-flex" data-action="restoreLocal">Restore</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="file-card-title">Backup file</div>
-          <div class="explainer">Download all bills and parties as a file you can keep anywhere.</div>
-          <div class="backup-actions">
-            <button class="btn btn-primary btn-flex" data-action="downloadBackup">Download backup</button>
-            <button class="btn btn-flex" data-action="restoreFromFile">Restore from file</button>
-          </div>
-        </div>
-
-        ${v.flashMsg ? `<div class="flash-msg">${escapeHTML(v.flashMsg)}</div>` : ''}
-
-        <div class="backup-footnote">Backups include all bills, parties and categories. Restoring replaces the data currently on this device.</div>
       </div>
     </div>`;
   }
@@ -805,30 +519,68 @@
   function buildBills(v) {
     const listHTML = v.filteredBills.length
       ? v.filteredBills.map((b) => buildBillRow(b, true)).join('')
-      : `<div class="empty-note">No bills match these filters.</div>`;
-
-    const partyOptions = v.parties.map((p) => `
-      <option value="${escapeHTML(p.name)}" ${v.billsFilter.party === p.name ? 'selected' : ''}>${escapeHTML(p.name)}</option>`).join('');
+      : `<div class="empty-note">No bills match</div>`;
+    const chipsHTML = v.chips.map((c, i) => `
+      <button class="chip-btn ${c.active ? 'is-active' : ''}" data-action="chipTap" data-index="${i}">${escapeHTML(c.label)}</button>`).join('');
 
     return `<div class="screen">
       <div class="header-row-tight">
-        <span class="screen-title">All Bills</span>
+        <span class="screen-title">All bills</span>
       </div>
-
-      <div class="filters-row">
-        <select class="filter-input" data-action="onFilterPartyChange">
-          <option value="" ${v.billsFilter.party === '' ? 'selected' : ''}>All parties</option>
-          ${partyOptions}
-        </select>
-        <input type="date" class="filter-input" value="${escapeHTML(v.billsFilter.date)}" data-action="onFilterDateChange">
+      <div class="search-row">
+        <input type="text" id="search-input" class="text-input" placeholder="Search party or note…" value="${escapeHTML(v.search)}" data-action="onSearch">
       </div>
-
-      <div class="filters-actions">
-        ${v.hasFilters ? `<button class="clear-filters" data-action="clearFilters">Clear filters</button>` : `<span class="filters-actions-spacer"></span>`}
-        <button class="btn btn-primary" data-action="openPrint" ${v.printDisabled ? 'disabled' : ''}>Print Bill</button>
-      </div>
-
+      <div class="chips-row">${chipsHTML}</div>
       <div class="bills-list">${listHTML}</div>
+    </div>`;
+  }
+
+  function buildAdd(v) {
+    const typeBtnsHTML = v.typeBtns.map((t, i) => `
+      <button class="type-btn ${t.active ? 'is-active' : ''}" data-action="typeTap" data-index="${i}">${escapeHTML(t.label)}</button>`).join('');
+
+    const dropdownHTML = v.showPartyDrop ? `
+      <div class="autocomplete-dropdown">
+        ${v.partyMatches.map((p, i) => `
+          <div class="autocomplete-item" data-action="pickParty" data-index="${i}">${escapeHTML(p.name)}</div>`).join('')}
+      </div>` : '';
+
+    const keysHTML = v.keys.map((k, i) => `
+      <button class="key-btn" data-action="keyTap" data-index="${i}">${escapeHTML(k.label)}</button>`).join('');
+
+    return `<div class="screen-flex">
+      <div class="header-row">
+        <button class="back-btn" data-action="goHome" aria-label="Back">‹</button>
+        <span class="screen-title">New bill</span>
+      </div>
+
+      <div class="type-toggle">${typeBtnsHTML}</div>
+
+      <div class="party-field">
+        <input type="text" id="party-input" class="text-input" placeholder="Party name" value="${escapeHTML(v.draftParty)}" data-action="onPartyInput" autocomplete="off">
+        ${dropdownHTML}
+      </div>
+
+      <div class="form-row-2col">
+        <input type="date" class="text-input" value="${escapeHTML(v.draftDate)}" data-action="onDateChange">
+        <input type="text" id="note-input" class="text-input" placeholder="Note (optional)" value="${escapeHTML(v.draftNote)}" data-action="onNoteChange">
+      </div>
+
+      <div class="amount-section">
+        <div class="amount-card">
+          <div class="amount-card-head">
+            <span class="amount-label">Amount</span>
+            <button class="link-danger" data-action="onClearAmount">Clear</button>
+          </div>
+          <div class="amount-value">${escapeHTML(v.amountDisplay)}</div>
+        </div>
+      </div>
+
+      <div class="keypad">${keysHTML}</div>
+
+      <div class="save-section">
+        <button class="btn btn-primary btn-save" data-action="onSave" ${v.saveDisabled ? 'disabled' : ''}>Save bill</button>
+      </div>
     </div>`;
   }
 
@@ -840,34 +592,61 @@
             <div class="party-name">${escapeHTML(p.name)}</div>
             <div class="party-hint">${escapeHTML(p.hint)}</div>
           </div>
-          <button class="party-delete-btn" data-action="removeParty" data-index="${i}" title="Delete party">&times;</button>
+          <button class="icon-delete-btn" data-action="removeParty" data-index="${i}" aria-label="Delete party" title="Delete party">✕</button>
         </div>`).join('')
-      : `<div class="empty-note">No parties yet.</div>`;
+      : '';
 
     return `<div class="screen">
       <div class="header-row-tight">
         <span class="screen-title">Parties</span>
       </div>
+      <div class="add-party-row">
+        <input type="text" id="new-party-input" class="text-input" placeholder="New party name" value="${escapeHTML(v.newParty)}" data-action="onNewPartyInput">
+        <button class="btn btn-primary btn-add-party" data-action="onAddParty">Add</button>
+      </div>
       <div class="parties-list">${listHTML}</div>
-      <div class="add-party-section">
-        <div class="add-party-label">Add Party</div>
-        <div class="add-party-row">
-          <input type="text" id="new-party-input" class="text-input" placeholder="Party name" value="${escapeHTML(v.newPartyName)}" data-action="onNewPartyChange">
-          <button class="btn btn-primary" data-action="addParty" ${v.addPartyDisabled ? 'disabled' : ''}>Add</button>
+    </div>`;
+  }
+
+  function buildMore(v) {
+    return `<div class="screen">
+      <div class="header-row-tight">
+        <span class="screen-title">More</span>
+      </div>
+      <div class="more-content">
+        <div class="card">
+          <div class="more-card-head">
+            <span class="more-card-title">Auto backup</span>
+            <button class="toggle-switch ${v.autoBackup ? 'is-on' : ''}" data-action="onToggleBackup" aria-label="Toggle auto backup"><span class="toggle-thumb"></span></button>
+          </div>
+          <div class="explainer">Your bills are saved on this device. Auto backup keeps a copy every day.</div>
+          <div class="meta-line">Last backup: ${escapeHTML(v.lastBackup)}</div>
+          <div class="more-actions">
+            <button class="btn btn-primary btn-flex" data-action="onExport">Export data</button>
+            <button class="btn btn-flex" data-action="onImport">Import</button>
+          </div>
         </div>
+        <div class="card">
+          <div class="more-card-title">Print statement</div>
+          <div class="explainer">Print or share a statement of bills for any party or month.</div>
+          <button class="btn btn-block" data-action="onPrint">Open print preview</button>
+        </div>
+        <div class="more-footer">Shayar Tex Bill Book · v2.0</div>
       </div>
     </div>`;
   }
 
   function buildPrintCombined(v) {
-    const rowsHTML = v.printBills.map((b) => `
-      <tr>
-        <td>${b.no}</td>
-        <td>${b.dateFmt}</td>
-        <td>${escapeHTML(b.party)}</td>
-        <td>${escapeHTML(b.category)}</td>
-        <td class="col-amount">${b.signedAmountFmt}</td>
-      </tr>`).join('');
+    const rowsHTML = v.printBills.length
+      ? v.printBills.map((b, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${b.dateFmt}</td>
+          <td>${escapeHTML(b.party)}</td>
+          <td>${escapeHTML(b.note)}</td>
+          <td class="col-amount">${b.signedAmountFmt}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="5" class="print-empty">No bills yet.</td></tr>`;
 
     return `
       <div class="print-page">
@@ -885,16 +664,16 @@
               <th>No</th>
               <th>Date</th>
               <th>Party</th>
-              <th>Category</th>
+              <th>Note</th>
               <th class="col-amount">Amount</th>
             </tr>
           </thead>
           <tbody>${rowsHTML}</tbody>
         </table>
         <div class="print-totals">
-          <div>Total Paid: <b>&#8377;${v.printTotals.payableFmt}</b></div>
-          <div>Total Received: <b>&#8377;${v.printTotals.receivedFmt}</b></div>
-          <div>Net: <b>&#8377;${v.printTotals.netFmt}</b></div>
+          <div>Total Paid: <b>₹${v.printTotals.payableFmt}</b></div>
+          <div>Total Received: <b>₹${v.printTotals.receivedFmt}</b></div>
+          <div>Net: <b>₹${v.printTotals.netFmt}</b></div>
         </div>
         <div class="signature-row">
           <span>Manager</span>
@@ -905,12 +684,22 @@
   }
 
   function buildPrintPerParty(v) {
+    if (!v.printGroups.length) {
+      return `
+        <div class="print-page">
+          <div class="print-header">
+            <div class="print-brand">SHAYAR TEX</div>
+            <div class="print-subtitle">DEBIT VOUCHER</div>
+          </div>
+          <div class="print-empty">No bills yet.</div>
+        </div>`;
+    }
     return v.printGroups.map((g) => {
-      const rowsHTML = g.bills.map((b) => `
+      const rowsHTML = g.bills.map((b, i) => `
         <tr>
-          <td>${b.no}</td>
+          <td>${i + 1}</td>
           <td>${b.dateFmt}</td>
-          <td>${escapeHTML(b.category)}</td>
+          <td>${escapeHTML(b.note)}</td>
           <td class="col-amount">${b.signedAmountFmt}</td>
         </tr>`).join('');
 
@@ -929,14 +718,14 @@
               <tr>
                 <th>No</th>
                 <th>Date</th>
-                <th>Category</th>
+                <th>Note</th>
                 <th class="col-amount">Amount</th>
               </tr>
             </thead>
             <tbody>${rowsHTML}</tbody>
           </table>
           <div class="print-totals-single">
-            <div>Total: <b>&#8377;${g.totalFmt}</b></div>
+            <div>Total: <b>₹${g.totalFmt}</b></div>
           </div>
           <div class="signature-row">
             <span>Manager</span>
@@ -950,37 +739,60 @@
   function buildPrint(v) {
     return `<div id="print-sheet">
       <div class="print-topbar no-print">
-        <button class="back-btn" data-action="closePrint">&#8249;</button>
-        <span class="screen-title">Print Preview</span>
+        <button class="back-btn" data-action="closePrint" aria-label="Back">‹</button>
+        <span class="screen-title">Print preview</span>
         <button class="btn btn-primary" data-action="doPrint">Print</button>
       </div>
-      <div class="print-mode-toggle segmented-full no-print">
-        <button class="seg-btn ${v.printModeCombined ? 'is-active' : ''}" data-action="setPrintCombined">All together</button>
-        <button class="seg-btn ${v.printModePerParty ? 'is-active' : ''}" data-action="setPrintPerParty">Separate bill per party</button>
+      <div class="print-mode-toggle no-print">
+        <button class="type-btn ${v.printModeCombined ? 'is-active' : ''}" data-action="setPrintCombined">All together</button>
+        <button class="type-btn ${v.printModePerParty ? 'is-active' : ''}" data-action="setPrintPerParty">Separate bill per party</button>
       </div>
       ${v.printModeCombined ? buildPrintCombined(v) : buildPrintPerParty(v)}
     </div>`;
   }
 
-  function buildFab(v) {
-    return v.isHome ? `<button class="fab" data-action="openAdd">+</button>` : '';
-  }
-
   function buildNav(v) {
-    if (!v.isTabScreen) return '';
+    if (!v.showNav) return '';
+    const homeSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>';
+    const billsSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15l-2.2-1.4L13.6 21l-2.2-1.4L9.2 21 7 19.6 6 21z"/><path d="M9 8h6"/><path d="M9 12h6"/></svg>';
+    const partiesSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.2 2.5-5.3 5.5-5.3s5.5 2.1 5.5 5.3"/><path d="M16 5.2A3.2 3.2 0 0 1 16 11.5"/><path d="M17 14.9c2.4.4 4 2.4 4 5.1"/></svg>';
+    const moreSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+
+    const navBtn = (action, item, label, svg) => `
+      <button class="nav-item ${item.active ? 'is-active' : ''}" data-action="${action}">
+        ${svg}
+        <div class="nav-label">${label}</div>
+      </button>`;
+
     return `
       <div class="bottom-nav">
-        <button class="nav-item ${v.navHomeActive ? 'is-active' : ''}" data-action="goHome">Home<div class="nav-dot"></div></button>
-        <button class="nav-item ${v.navBillsActive ? 'is-active' : ''}" data-action="goBills">Bills<div class="nav-dot"></div></button>
-        <button class="nav-item ${v.navPartiesActive ? 'is-active' : ''}" data-action="goParties">Parties<div class="nav-dot"></div></button>
-        <button class="nav-item ${v.navMoreActive ? 'is-active' : ''}" data-action="goBackup">More<div class="nav-dot"></div></button>
+        <div class="nav-row">
+          <div class="nav-group">
+            ${navBtn('goHome', v.navHome, 'Home', homeSvg)}
+            ${navBtn('goBills', v.navBills, 'Bills', billsSvg)}
+          </div>
+          <div class="nav-spacer"></div>
+          <div class="nav-group">
+            ${navBtn('goParties', v.navParties, 'Parties', partiesSvg)}
+            ${navBtn('goMore', v.navMore, 'More', moreSvg)}
+          </div>
+        </div>
+        <button class="nav-fab" data-action="goAdd" aria-label="New bill">+</button>
       </div>`;
+  }
+
+  function buildToast(v) {
+    return v.hasFlash ? `<div class="toast">${escapeHTML(v.flash)}</div>` : '';
   }
 
   // ===================== Render =====================
 
   const root = document.getElementById('app-root');
   let currentVals = null;
+  // The window keeps its scroll position across innerHTML swaps, so switching
+  // from a scrolled long screen would show the next screen mid-scroll with its
+  // title off-screen. Reset to the top whenever the screen changes.
+  let lastScreen = null;
   // Guards the focusin listener while render() programmatically restores
   // focus below — without this, restoring focus fires a 'focusin' event,
   // which calls the field's onFocus handler, which calls setState(), which
@@ -988,8 +800,9 @@
   let restoringFocus = false;
 
   function render() {
-    // Save focus + caret so the party / new-party text inputs don't lose
-    // keyboard focus on every keystroke (innerHTML replace destroys nodes).
+    // Save focus + caret so text inputs (search / party / note / new-party)
+    // don't lose keyboard focus on every keystroke (innerHTML replace
+    // destroys and recreates every node).
     const active = document.activeElement;
     let focusInfo = null;
     if (active && active.id && root.contains(active)) {
@@ -1009,13 +822,19 @@
     } else {
       let screenHTML = '';
       if (v.isHome) screenHTML = buildHome(v);
-      else if (v.isAdd) screenHTML = buildAdd(v);
-      else if (v.isBackup) screenHTML = buildBackup(v);
       else if (v.isBills) screenHTML = buildBills(v);
+      else if (v.isAdd) screenHTML = buildAdd(v);
       else if (v.isParties) screenHTML = buildParties(v);
-      html = screenHTML + buildFab(v) + buildNav(v);
+      else if (v.isMore) screenHTML = buildMore(v);
+      html = screenHTML + buildNav(v);
     }
+    html += buildToast(v);
     root.innerHTML = html;
+
+    if (v.screen !== lastScreen) {
+      window.scrollTo(0, 0);
+      lastScreen = v.screen;
+    }
 
     if (focusInfo) {
       const el = document.getElementById(focusInfo.id);
@@ -1038,31 +857,48 @@
 
   function resolveAction(name) {
     if (!currentVals) return null;
-    if (name.indexOf('.') !== -1) {
-      const [group, method] = name.split('.');
-      return currentVals[group] && currentVals[group][method];
-    }
     return currentVals[name];
   }
 
   root.addEventListener('click', (e) => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
+    // Text/date inputs carry data-action for the 'input'/'change' listeners
+    // below — a plain click on them must not invoke the handler (it would be
+    // called without an event object).
+    if (el.tagName === 'INPUT' || el.tagName === 'SELECT') return;
     const action = el.dataset.action;
 
-    if (action === 'selectSuggestion') {
+    // Indexed-list actions: the handler lives on an item inside an array
+    // returned by computeVals, so it's looked up by index rather than name.
+    if (action === 'chipTap') {
       const i = Number(el.dataset.index);
-      if (currentVals.partySuggestions[i]) currentVals.partySuggestions[i].select();
+      if (currentVals.chips[i]) currentVals.chips[i].onTap();
+      return;
+    }
+    if (action === 'typeTap') {
+      const i = Number(el.dataset.index);
+      if (currentVals.typeBtns[i]) currentVals.typeBtns[i].onTap();
+      return;
+    }
+    if (action === 'pickParty') {
+      const i = Number(el.dataset.index);
+      if (currentVals.partyMatches[i]) currentVals.partyMatches[i].onPick();
+      return;
+    }
+    if (action === 'keyTap') {
+      const i = Number(el.dataset.index);
+      if (currentVals.keys[i]) currentVals.keys[i].onTap();
       return;
     }
     if (action === 'removeParty') {
       const i = Number(el.dataset.index);
-      if (currentVals.partiesList[i]) currentVals.partiesList[i].remove();
+      if (currentVals.partiesList[i]) currentVals.partiesList[i].onDelete();
       return;
     }
     if (action === 'deleteBill') {
-      const no = Number(el.dataset.no);
-      if (typeof currentVals.deleteBill === 'function') currentVals.deleteBill(no);
+      const id = Number(el.dataset.id);
+      if (typeof currentVals.deleteBill === 'function') currentVals.deleteBill(id);
       return;
     }
 
@@ -1083,14 +919,15 @@
     const el = e.target;
     if (!el.dataset || !el.dataset.action) return;
     const isDate = el.tagName === 'INPUT' && el.type === 'date';
-    const isSelect = el.tagName === 'SELECT';
-    if (isDate || isSelect) {
+    if (isDate) {
       const fn = resolveAction(el.dataset.action);
       if (typeof fn === 'function') fn(e);
     }
   });
 
-  // 'focus' does not bubble — use 'focusin' for delegation.
+  // 'focus' does not bubble — use 'focusin' for delegation. (No screen
+  // currently wires up data-focus-action, but the listener is kept as part
+  // of the app's standing delegated-event architecture.)
   root.addEventListener('focusin', (e) => {
     if (restoringFocus) return; // programmatic refocus after render — not a user focus event
     const el = e.target;
@@ -1113,21 +950,18 @@
         try {
           parsed = JSON.parse(reader.result);
         } catch (err) {
-          setState({ flashMsg: 'That file is not a valid backup.' });
+          toast('That file is not a valid backup.');
           return;
         }
         if (!parsed || !Array.isArray(parsed.bills) || !Array.isArray(parsed.parties)) {
-          setState({ flashMsg: 'That file is not a valid backup.' });
+          toast('That file is not a valid backup.');
           return;
         }
         if (!confirm('Restore from this file? This replaces all bills and parties currently on this device.')) return;
-        const maxNo = parsed.bills.reduce((m, b) => Math.max(m, Number(b.no) || 0), 0);
-        setState({
-          bills: parsed.bills,
-          parties: parsed.parties,
-          nextNo: typeof parsed.nextNo === 'number' ? parsed.nextNo : maxNo + 1,
-          flashMsg: 'Restored from file.'
-        });
+        // Accepts both old-format and new-format backups.
+        const restored = migrateData(parsed);
+        setState({ bills: restored.bills, parties: restored.parties });
+        toast('Restored from file.');
       };
       reader.readAsText(file);
     });
