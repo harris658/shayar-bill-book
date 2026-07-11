@@ -492,6 +492,12 @@
       openPrint: () => {
         if (filteredBills.length) setState({ screen: 'print' });
       },
+      deleteBill: (no) => {
+        const bill = state.bills.find((b) => b.no === no);
+        if (!bill) return;
+        if (!confirm(`Delete bill #${bill.no} — ${bill.party}, ₹${fmtAmount(bill.amount)}? This cannot be undone.`)) return;
+        setState({ bills: state.bills.filter((b) => b.no !== no) });
+      },
 
       // ---- parties screen ----
       partiesList,
@@ -537,7 +543,10 @@
       </div>`;
   }
 
-  function buildBillRow(b) {
+  function buildBillRow(b, withDelete) {
+    const deleteHTML = withDelete
+      ? `<button class="bill-delete-btn" data-action="deleteBill" data-no="${b.no}" title="Delete bill">&times;</button>`
+      : '';
     return `
       <div class="bill-row">
         <div class="bill-info">
@@ -545,12 +554,13 @@
           <div class="bill-meta">#${b.no} · ${b.dateFmt} · ${escapeHTML(b.category)}</div>
         </div>
         <span class="bill-amount ${b.amountClass}">${b.signedAmountFmt}</span>
+        ${deleteHTML}
       </div>`;
   }
 
   function buildHomeVariantA(v) {
     const billsHTML = v.visibleBills.length
-      ? v.visibleBills.map(buildBillRow).join('')
+      ? v.visibleBills.map((b) => buildBillRow(b)).join('')
       : `<div class="empty-note">No bills yet — tap + to add your first bill.</div>`;
 
     const categoriesHTML = v.showCategoryBreakdown ? `
@@ -794,7 +804,7 @@
 
   function buildBills(v) {
     const listHTML = v.filteredBills.length
-      ? v.filteredBills.map(buildBillRow).join('')
+      ? v.filteredBills.map((b) => buildBillRow(b, true)).join('')
       : `<div class="empty-note">No bills match these filters.</div>`;
 
     const partyOptions = v.parties.map((p) => `
@@ -1048,6 +1058,11 @@
     if (action === 'removeParty') {
       const i = Number(el.dataset.index);
       if (currentVals.partiesList[i]) currentVals.partiesList[i].remove();
+      return;
+    }
+    if (action === 'deleteBill') {
+      const no = Number(el.dataset.no);
+      if (typeof currentVals.deleteBill === 'function') currentVals.deleteBill(no);
       return;
     }
 
