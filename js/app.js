@@ -101,6 +101,24 @@
       .replace(/'/g, '&#39;');
   }
 
+  // ===================== Amount calculator (restored from v1) =====================
+  //
+  // The amount keypad is a small calculator: draft.amount may hold an
+  // expression over + - * / which safeEval() resolves to the bill amount.
+  // A trailing operator/dot is ignored; anything unparsable is NaN.
+
+  function safeEval(str) {
+    if (!str) return NaN;
+    if (!/^[0-9+\-*/.]+$/.test(str)) return NaN;
+    if (/[+\-*/.]$/.test(str)) str = str.slice(0, -1);
+    try {
+      const v = Function('"use strict";return (' + str + ')')();
+      return typeof v === 'number' && isFinite(v) ? v : NaN;
+    } catch (e) {
+      return NaN;
+    }
+  }
+
   // ===================== Data model + migration =====================
   //
   // v1 bills looked like { no, party, date, category, type, amount }.
@@ -247,25 +265,76 @@
     const typeBtns = [typeBtn('Received', 'received'), typeBtn('Paid', 'paid')];
 
     const pq = dr.party.trim().toLowerCase();
-    const matchNames = pq && !s.parties.some((p) => p.toLowerCase() === pq)
+    const hasExactParty = !!pq && s.parties.some((p) => p.toLowerCase() === pq);
+    const matchNames = pq && !hasExactParty
       ? s.parties.filter((p) => p.toLowerCase().includes(pq)).slice(0, 4)
       : [];
     const partyMatches = matchNames.map((name) => ({
       name,
       onPick: () => setState((st) => ({ draft: { ...st.draft, party: name } }))
     }));
+    // "+ Add as new party" row (restored from v1): typing a name with no
+    // exact match offers to create the party right from the bill form.
+    const showCreateParty = !!pq && !hasExactParty;
+    const onCreateParty = () => {
+      const name = dr.party.trim();
+      if (!name) return;
+      setState((st) => (st.parties.some((p) => p.toLowerCase() === name.toLowerCase())
+        ? {}
+        : { parties: [...st.parties, name] }));
+      toast('Party added ✓');
+    };
 
-    const keyLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
-    const tapKey = (k) => () => setState((st) => {
-      let a = st.draft.amount;
-      if (k === '⌫') a = a.slice(0, -1);
-      else if (k === '.' && a.includes('.')) { /* one dot max — no-op */ }
-      else if (a.length < 10) a += k;
-      return { draft: { ...st.draft, amount: a } };
-    });
-    const keys = keyLabels.map((k) => ({ label: k, onTap: tapKey(k) }));
+    // Keypad = v1's calculator in v2's grid: C ⌫ ÷ × / 7 8 9 − / 4 5 6 + /
+    // 1 2 3 = / 0 . ("=" spans two rows, "0" spans two columns).
+    const isOp = (ch) => ['+', '-', '*', '/'].includes(ch);
+    const applyKey = (a, k) => {
+      if (k === 'C') return '';
+      if (k === '⌫') return a.slice(0, -1);
+      if (k === '=') {
+        const v = safeEval(a);
+        return isNaN(v) ? '' : String(Math.round(v * 100) / 100);
+      }
+      if (isOp(k)) {
+        if (!a) return a;
+        return isOp(a.slice(-1)) ? a.slice(0, -1) + k : a + k;
+      }
+      if (k === '.') {
+        const last = a.split(/[+\-*/]/).pop();
+        if (last.includes('.')) return a;
+        return a + (last === '' ? '0.' : '.');
+      }
+      if (a.length >= 24) return a;
+      return a + k;
+    };
+    const keyDefs = [
+      { label: 'C', key: 'C', cls: 'key-clear' },
+      { label: '⌫', key: '⌫', cls: 'key-backspace' },
+      { label: '÷', key: '/', cls: 'key-op' },
+      { label: '×', key: '*', cls: 'key-op' },
+      { label: '7', key: '7', cls: '' },
+      { label: '8', key: '8', cls: '' },
+      { label: '9', key: '9', cls: '' },
+      { label: '−', key: '-', cls: 'key-op' },
+      { label: '4', key: '4', cls: '' },
+      { label: '5', key: '5', cls: '' },
+      { label: '6', key: '6', cls: '' },
+      { label: '+', key: '+', cls: 'key-op' },
+      { label: '1', key: '1', cls: '' },
+      { label: '2', key: '2', cls: '' },
+      { label: '3', key: '3', cls: '' },
+      { label: '=', key: '=', cls: 'key-equals' },
+      { label: '0', key: '0', cls: 'key-zero' },
+      { label: '.', key: '.', cls: '' }
+    ];
+    const keys = keyDefs.map((d) => ({
+      label: d.label,
+      cls: d.cls,
+      onTap: () => setState((st) => ({ draft: { ...st.draft, amount: applyKey(st.draft.amount, d.key) } }))
+    }));
 
-    const amountNum = parseFloat(dr.amount) || 0;
+    const evaluated = safeEval(dr.amount);
+    const amountNum = isNaN(evaluated) ? 0 : Math.round(evaluated * 100) / 100;
     const canSave = dr.party.trim().length > 0 && amountNum > 0;
 
     const onSave = () => {
@@ -370,13 +439,17 @@
       typeBtns,
       draftParty: dr.party,
       onPartyInput: (e) => setState((st) => ({ draft: { ...st.draft, party: e.target.value } })),
-      showPartyDrop: partyMatches.length > 0,
+      showPartyDrop: partyMatches.length > 0 || showCreateParty,
       partyMatches,
+      showCreateParty,
+      onCreateParty,
       draftDate: dr.date,
       onDateChange: (e) => setState((st) => ({ draft: { ...st.draft, date: e.target.value } })),
       draftNote: dr.note,
       onNoteChange: (e) => setState((st) => ({ draft: { ...st.draft, note: e.target.value } })),
-      amountDisplay: dr.amount ? '₹' + dr.amount : '₹0',
+      amountDisplay: dr.amount
+        ? '₹' + dr.amount.replace(/\//g, '÷').replace(/\*/g, '×').replace(/-/g, '−')
+        : '₹0',
       onClearAmount: () => setState((st) => ({ draft: { ...st.draft, amount: '' } })),
       keys,
       saveDisabled: !canSave,
@@ -543,10 +616,12 @@
       <div class="autocomplete-dropdown">
         ${v.partyMatches.map((p, i) => `
           <div class="autocomplete-item" data-action="pickParty" data-index="${i}">${escapeHTML(p.name)}</div>`).join('')}
+        ${v.showCreateParty ? `
+          <div class="autocomplete-item autocomplete-create" data-action="onCreateParty">+ Add "${escapeHTML(v.draftParty.trim())}" as new party</div>` : ''}
       </div>` : '';
 
     const keysHTML = v.keys.map((k, i) => `
-      <button class="key-btn" data-action="keyTap" data-index="${i}">${escapeHTML(k.label)}</button>`).join('');
+      <button class="key-btn ${k.cls}" data-action="keyTap" data-index="${i}">${escapeHTML(k.label)}</button>`).join('');
 
     return `<div class="screen-flex">
       <div class="header-row">

@@ -518,7 +518,7 @@ input:focus {
   padding: 0 20px;
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   grid-auto-rows: 52px;
   gap: 8px;
   align-content: start;
@@ -536,6 +536,45 @@ input:focus {
 
 .key-btn:active {
   background: var(--divider-soft);
+}
+
+.key-op {
+  font-size: 18px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.key-clear {
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.key-backspace {
+  font-size: 16px;
+}
+
+.key-equals {
+  grid-row: span 2;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.key-equals:active {
+  background: var(--accent);
+  opacity: .85;
+}
+
+.key-zero {
+  grid-column: span 2;
+}
+
+.autocomplete-create {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .save-section {
